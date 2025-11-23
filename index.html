@@ -29,6 +29,13 @@
     <style>
         /* Apply smooth scrolling */
         html { scroll-behavior: smooth; }
+        
+        /* New custom style for the triangular profile picture */
+        .clip-triangle {
+            /* This CSS property crops the element into a triangle shape. 
+               The points define the three corners: bottom-left, bottom-right, and top-center. */
+            clip-path: polygon(0% 100%, 100% 100%, 50% 0%);
+        }
     </style>
 </head>
 <body class="font-sans bg-background text-text-dark min-h-screen">
@@ -37,7 +44,7 @@
     <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <a href="#about" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
-                [Your Name/Initials]
+                [Hello]
             </a>
             <nav class="space-x-6">
                 <a href="#skills" class="text-text-muted hover:text-primary transition duration-300">Skills</a>
@@ -56,28 +63,29 @@
         <section id="about" class="pt-10 flex flex-col md:flex-row items-start gap-10">
             <div class="md:w-3/4">
                 <h1 class="text-4xl sm:text-5xl font-extrabold leading-tight mb-4 text-text-dark">
-                    Hi, I'm [Your Full Name]
+                    Chunbo Li
                 </h1>
                 <h2 class="text-xl sm:text-2xl font-medium text-text-muted mb-6">
-                    A student developer focused on [Field of Interest].
+                    A developer focused on [System].
                 </h2>
                 <p class="text-lg text-text-dark leading-relaxed mb-8">
-                    I enjoy learning and building things with code! I'm currently exploring **[Key Technology 1]** and **[Key Technology 2]** for my personal projects. My goal is to create simple, effective software that solves real problems. I'm excited about computer science and always looking for new challenges.
+                    This is my first personal page so now it's simple.
                 </p>
                 <div class="flex flex-wrap gap-4">
                     <a href="#projects" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
-                        See My Projects
+                        Projects
                     </a>
-                    <a href="mailto:you@example.com" class="text-text-dark hover:text-primary font-semibold py-2 px-6 rounded-lg border border-gray-300 hover:border-primary transition duration-300">
+                    <!-- This link jumps to the contact section ID -->
+                    <a href="#contact-cta" class="text-text-dark hover:text-primary font-semibold py-2 px-6 rounded-lg border border-gray-300 hover:border-primary transition duration-300">
                         Email Me
                     </a>
                 </div>
             </div>
-            <!-- Profile Image Placeholder (Smaller and simpler ring) -->
+            <!-- Profile Image Section (NOW BIGGER AND TRIANGULAR) -->
             <div class="md:w-1/4 flex justify-center mt-6 md:mt-0">
-                <div class="w-32 h-32 bg-gray-100 rounded-full overflow-hidden border-4 border-primary/50 shadow-lg">
-                    <!-- Replace the src with your actual profile picture URL -->
-                    <img src="https://placehold.co/128x128/D1D5DB/1F2937?text=Pic" alt="Profile Placeholder" class="object-cover w-full h-full" onerror="this.onerror=null; this.src='https://placehold.co/128x128/D1D5DB/1F2937?text=Pic';">
+                <!-- Size changed to w-48 h-48 and class changed to clip-triangle -->
+                <div class="w-48 h-48 bg-gray-100 border-4 border-primary/50 shadow-lg clip-triangle">
+                    <img src="./profile.jpg" alt="Your Profile Picture" class="object-cover w-full h-full" onerror="this.onerror=null; this.src='https://placehold.co/192x192/D1D5DB/1F2937?text=Pic';">
                 </div>
             </div>
         </section>
@@ -183,7 +191,8 @@
         </section>
 
         <!-- 5. Contact CTA (Simplified) -->
-        <section class="py-10 text-center border-t border-gray-200 pt-16">
+        <!-- This section has the target ID: contact-cta -->
+        <section id="contact-cta" class="py-10 text-center border-t border-gray-200 pt-16">
             <p class="text-lg text-text-muted mb-4 max-w-2xl mx-auto">
                 Feel free to connect with me about anything from code to cool ideas!
             </p>

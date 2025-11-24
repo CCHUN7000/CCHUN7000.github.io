@@ -30,7 +30,7 @@
         /* Apply smooth scrolling */
         html { scroll-behavior: smooth; }
         
-        /* New custom style for the triangular profile picture */
+        /* Custom style for the triangular profile picture */
         .clip-triangle {
             /* This CSS property crops the element into a triangle shape. 
                The points define the three corners: bottom-left, bottom-right, and top-center. */
@@ -46,12 +46,13 @@
             <a href="#about" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
                 [Hello]
             </a>
+            <!-- UPDATED NAVIGATION LINKS -->
             <nav class="space-x-6">
-                <a href="#skills" class="text-text-muted hover:text-primary transition duration-300">Interests</a>
-                <a href="#projects" class="text-text-muted hover:text-primary transition duration-300">Work</a>
-                <a href="#visuals" class="text-text-muted hover:text-primary transition duration-300">Visuals</a>
                 <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
                     GitHub
+                </a>
+                <a href="https://linkedin.com/in/[your-linkedin-profile]" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    LinkedIn
                 </a>
             </nav>
         </div>
@@ -75,9 +76,9 @@
                     <a href="#projects" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
                         Projects
                     </a>
-                    <!-- This link jumps to the contact section ID -->
-                    <a href="#contact-cta" class="text-text-dark hover:text-primary font-semibold py-2 px-6 rounded-lg border border-gray-300 hover:border-primary transition duration-300">
-                        Email Me
+                    <!-- EDITED: Button now matches the primary style (blue background, white text) -->
+                    <a href="#visuals" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
+                        Visuals
                     </a>
                 </div>
             </div>
@@ -85,13 +86,14 @@
             <div class="md:w-1/4 flex justify-center mt-6 md:mt-0">
                 <!-- Size changed to w-48 h-48 and class changed to clip-triangle -->
                 <div class="w-48 h-48 bg-gray-100 border-4 border-primary/50 shadow-lg clip-triangle">
-                    <img src="./profile.jpg" alt="Your Profile Picture" class="object-cover w-full h-full" onerror="this.onerror=null; this.src='https://placehold.co/192x192/D1D5DB/1F2937?text=Pic';">
+                    <!-- Placeholder for Profile Picture -->
+                    <img src="https://placehold.co/192x192/D1D5DB/1F2937?text=Pic" alt="Your Profile Picture" class="object-cover w-full h-full" onerror="this.onerror=null; this.src='https://placehold.co/192x192/D1D5DB/1F2937?text=Pic';">
                 </div>
             </div>
         </section>
 
-        <!-- 2. Skills Section (Simpler layout: just a list of badges) -->
-        <section id="Interests" class="py-10">
+        <!-- 2. Interests Section -->
+        <section id="interests" class="py-10">
             <h3 class="text-3xl font-bold mb-8 text-primary">Interests</h3>
             <div class="flex flex-wrap gap-3">
                 <span class="bg-gray-100 text-text-dark px-4 py-2 rounded-full border border-primary/50">Linux</span>
@@ -113,7 +115,7 @@
                 <!-- Project 1 (Updated Card with Image) -->
                 <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300 flex flex-col md:flex-row gap-6">
                     <div class="md:w-1/3 flex-shrink-0">
-                        <!-- Replace the src with your actual project screenshot URL -->
+                        <!-- Placeholder for Project 1 Screenshot -->
                         <img src="https://placehold.co/300x200/3B82F6/FFFFFF?text=Project+Screenshot+1" alt="Project 1 Thumbnail" class="rounded-lg w-full h-auto object-cover border border-primary/20" onerror="this.onerror=null; this.src='https://placehold.co/300x200/3B82F6/FFFFFF?text=Project+Screenshot+1';">
                     </div>
                     <div class="md:w-2/3">
@@ -142,7 +144,7 @@
                 <!-- Project 2 (Updated Card with Image) -->
                 <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300 flex flex-col md:flex-row gap-6">
                     <div class="md:w-1/3 flex-shrink-0">
-                        <!-- Replace the src with your actual project screenshot URL -->
+                        <!-- Placeholder for Project 2 Screenshot -->
                         <img src="https://placehold.co/300x200/3B82F6/FFFFFF?text=Project+Screenshot+2" alt="Project 2 Thumbnail" class="rounded-lg w-full h-auto object-cover border border-primary/20" onerror="this.onerror=null; this.src='https://placehold.co/300x200/3B82F6/FFFFFF?text=Project+Screenshot+2';">
                     </div>
                     <div class="md:w-2/3">
@@ -166,27 +168,40 @@
             </div>
         </section>
         
-        <!-- 4. Visuals/Gallery Section (NEW) -->
+        <!-- 4. Visuals/Gallery Section (MODIFIED to a single viewer with arrows) -->
         <section id="visuals" class="py-10">
             <h3 class="text-3xl font-bold mb-8 text-primary">Visuals & Creations</h3>
-            <p class="text-text-muted mb-6">Here are a few other images, diagrams, or screenshots from my work and interests.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <!-- Visual Image 1 -->
-                <div class="rounded-xl overflow-hidden border-2 border-gray-200 shadow-md hover:border-primary transition duration-300 bg-card">
-                    <!-- Replace the src with your image URL -->
-                    <img src="https://placehold.co/300x300/F0F4FF/3B82F6?text=Diagram+or+Art" alt="Visual 1" class="w-full h-48 object-cover" onerror="this.onerror=null; this.src='https://placehold.co/300x300/F0F4FF/3B82F6?text=Diagram+or+Art';">
+            <p class="text-text-muted mb-6">Explore a gallery of images, diagrams, or screenshots from my work and interests.</p>
+
+            <!-- Image Viewer Container -->
+            <div class="relative bg-card rounded-xl border-2 border-gray-200 shadow-xl overflow-hidden">
+                
+                <!-- Main Image Display -->
+                <div class="aspect-video bg-gray-100 flex items-center justify-center">
+                    <img id="gallery-image" 
+                         src="https://placehold.co/600x400/3B82F6/FFFFFF?text=Loading+Visuals..." 
+                         alt="Gallery image viewer" 
+                         class="w-full h-full object-cover transition duration-500 ease-in-out">
                 </div>
-                <!-- Visual Image 2 -->
-                <div class="rounded-xl overflow-hidden border-2 border-gray-200 shadow-md hover:border-primary transition duration-300 bg-card">
-                    <!-- Replace the src with your image URL -->
-                    <img src="https://placehold.co/300x300/F0F4FF/3B82F6?text=Coding+Setup+Photo" alt="Visual 2" class="w-full h-48 object-cover" onerror="this.onerror=null; this.src='https://placehold.co/300x300/F0F4FF/3B82F6?text=Coding+Setup+Photo';">
+
+                <!-- Navigation Arrows -->
+                <button id="prev-btn" aria-label="Previous image" 
+                        class="absolute top-1/2 left-3 transform -translate-y-1/2 bg-black/30 hover:bg-black/60 text-white p-3 rounded-full transition duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50">
+                    <!-- Left Arrow SVG -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+
+                <button id="next-btn" aria-label="Next image" 
+                        class="absolute top-1/2 right-3 transform -translate-y-1/2 bg-black/30 hover:bg-black/60 text-white p-3 rounded-full transition duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50">
+                    <!-- Right Arrow SVG -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+
+                <!-- Caption and Indicator -->
+                <div class="p-4 flex justify-between items-center">
+                    <p id="gallery-caption" class="text-text-muted text-sm italic">Image caption will appear here.</p>
+                    <p id="gallery-indicator" class="text-primary font-medium text-sm">1/4</p>
                 </div>
-                <!-- Visual Image 3 -->
-                <div class="rounded-xl overflow-hidden border-2 border-gray-200 shadow-md hover:border-primary transition duration-300 bg-card">
-                    <!-- Replace the src with your image URL -->
-                    <img src="https://placehold.co/300x300/F0F4FF/3B82F6?text=Fun+Screenshot" alt="Visual 3" class="w-full h-48 object-cover" onerror="this.onerror=null; this.src='https://placehold.co/300x300/F0F4FF/3B82F6?text=Fun+Screenshot';">
-                </div>
-                <!-- You can easily copy and paste one of the above divs to add a 4th or 5th image! -->
             </div>
         </section>
 
@@ -196,9 +211,7 @@
             <p class="text-lg text-text-muted mb-4 max-w-2xl mx-auto">
                 Feel free to connect with me about anything from code to cool ideas!
             </p>
-            <a href="mailto:you@example.com" class="bg-primary hover:bg-blue-600 text-white font-semibold py-3 px-8 rounded-lg transition duration-300 text-base shadow-lg">
-                Say Hello
-            </a>
+            <!-- The "Say Hello" button was removed here. -->
         </section>
     </main>
 
@@ -214,5 +227,69 @@
         </div>
     </footer>
 
+    <!-- JavaScript for the Image Gallery Functionality -->
+    <script>
+        // Array of images, simulating those found in the repository
+        const galleryImages = [
+            { url: 'https://placehold.co/600x400/3B82F6/FFFFFF?text=Code+Snippet+Layout', alt: 'A complex data visualization.' },
+            { url: 'https://placehold.co/600x400/10B981/FFFFFF?text=Project+UI+Screenshot', alt: 'Screenshot of a recent web project.' },
+            { url: 'https://placehold.co/600x400/EF4444/FFFFFF?text=Architecture+Diagram', alt: 'Diagram of a system architecture.' },
+            { url: 'https://placehold.co/600x400/F59E0B/FFFFFF?text=Fun+Coding+Setup', alt: 'A fun coding screenshot.' }
+        ];
+
+        let currentIndex = 0;
+        const galleryImageEl = document.getElementById('gallery-image');
+        const galleryCaptionEl = document.getElementById('gallery-caption');
+        const galleryIndicatorEl = document.getElementById('gallery-indicator');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+
+        /**
+         * Updates the image source, alt text, caption, and indicator text.
+         */
+        function updateGallery() {
+            const image = galleryImages[currentIndex];
+            
+            // Update image element properties
+            galleryImageEl.src = image.url;
+            galleryImageEl.alt = image.alt;
+            
+            // Update caption and indicator
+            galleryCaptionEl.textContent = image.alt;
+            galleryIndicatorEl.textContent = `${currentIndex + 1}/${galleryImages.length}`;
+
+            // Add a small animation effect (tailwind transition already defined in CSS)
+            galleryImageEl.classList.remove('opacity-0');
+        }
+
+        /**
+         * Navigates to the next image, wrapping around to the start.
+         */
+        function showNextImage() {
+            galleryImageEl.classList.add('opacity-0'); // Start fade effect
+            setTimeout(() => {
+                currentIndex = (currentIndex + 1) % galleryImages.length;
+                updateGallery();
+            }, 100); // Small delay to allow fade out
+        }
+
+        /**
+         * Navigates to the previous image, wrapping around to the end.
+         */
+        function showPrevImage() {
+            galleryImageEl.classList.add('opacity-0'); // Start fade effect
+            setTimeout(() => {
+                currentIndex = (currentIndex - 1 + galleryImages.length) % galleryImages.length;
+                updateGallery();
+            }, 100); // Small delay to allow fade out
+        }
+
+        // Attach event listeners to buttons
+        prevBtn.addEventListener('click', showPrevImage);
+        nextBtn.addEventListener('click', showNextImage);
+
+        // Initialize the gallery on load
+        window.onload = updateGallery;
+    </script>
 </body>
 </html>

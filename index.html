@@ -43,7 +43,7 @@
     <!-- Header & Simple Navigation -->
     <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <a href="#about" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+            <a class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
                 [Hello]
             </a>
             <!-- UPDATED NAVIGATION LINKS -->
@@ -71,6 +71,7 @@
                 </h2>
                 <p class="text-lg text-text-dark leading-relaxed mb-8">
                     This is my first personal page so now it's simple.
+                    You can find me at CHUNBO001@e.ntu.edu.sg
                 </p>
                 <!-- START OF EDITED BUTTON GROUP -->
                 <div class="flex flex-wrap gap-4">
@@ -176,28 +177,28 @@
         
         <!-- 4. Blog Section (NEW) -->
         <section id="blog" class="py-10">
-            <!-- Title size reduced from text-3xl to text-2xl -->
+            <!-- Title size restored to text-3xl -->
             <h3 class="text-3xl font-bold mb-8 text-primary">Blog Posts</h3>
             <ul class="space-y-4">
                 <!-- Blog Post 1 - Title changed to "up coming" -->
                 <li class="bg-card p-4 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
                     <a href="blog/post-1.html" class="text-lg font-semibold text-text-dark hover:text-primary block">
-                        up coming
-                        <span class="text-sm text-text-muted ml-2 font-normal">(2024-10-25)</span>
+                        Build up Ubuntu on a virtual machine, and try sched-ext with sched-nest
+                        <span class="text-sm text-text-muted ml-2 font-normal">(25/11/2025)</span>
                     </a>
                 </li>
                 <!-- Blog Post 2 - Title changed to "up coming" -->
                 <li class="bg-card p-4 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
                     <a href="blog/post-2.html" class="text-lg font-semibold text-text-dark hover:text-primary block">
                         up coming
-                        <span class="text-sm text-text-muted ml-2 font-normal">(2024-09-15)</span>
+                        <span class="text-sm text-text-muted ml-2 font-normal">(2024-xx-yy)</span>
                     </a>
                 </li>
                 <!-- Blog Post 3 - Title changed to "up coming" -->
                 <li class="bg-card p-4 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
                     <a href="blog/post-3.html" class="text-lg font-semibold text-text-dark hover:text-primary block">
                         up coming
-                        <span class="text-sm text-text-muted ml-2 font-normal">(2024-08-01)</span>
+                        <span class="text-sm text-text-muted ml-2 font-normal">(2024-xx-yy)</span>
                     </a>
                 </li>
             </ul>
@@ -244,7 +245,7 @@
         <!-- This section has the target ID: contact-cta -->
         <section id="contact-cta" class="py-10 text-center border-t border-gray-200 pt-16">
             <p class="text-lg text-text-muted mb-4 max-w-2xl mx-auto">
-                Feel free to connect with me about anything from code to cool ideas!
+                Feel free to connect with me
             </p>
             <!-- The "Say Hello" button was removed here. -->
         </section>
@@ -266,10 +267,10 @@
     <script>
         // Array of images, simulating those found in the repository
         const galleryImages = [
-            { url: 'https://placehold.co/600x400/3B82F6/FFFFFF?text=Code+Snippet+Layout', alt: 'A complex data visualization.' },
-            { url: 'https://placehold.co/600x400/10B981/FFFFFF?text=Project+UI+Screenshot', alt: 'Screenshot of a recent web project.' },
-            { url: 'https://placehold.co/600x400/EF4444/FFFFFF?text=Architecture+Diagram', alt: 'Diagram of a system architecture.' },
-            { url: 'https://placehold.co/600x400/F59E0B/FFFFFF?text=Fun+Coding+Setup', alt: 'A fun coding screenshot.' }
+            { url: './photos/a.jpg', alt: 'A complex data visualization.' },
+            { url: './photos/b.jpg', alt: 'Screenshot of a recent web project.' },
+            { url: './photos/c.jpg', alt: 'Diagram of a system architecture.' },
+            { url: './photos/d.jpg', alt: 'A fun coding screenshot.' }
         ];
 
         let currentIndex = 0;
@@ -295,6 +296,12 @@
 
             // Add a small animation effect (tailwind transition already defined in CSS)
             galleryImageEl.classList.remove('opacity-0');
+            
+            // If the image fails to load (e.g., file not present), display a placeholder text
+            galleryImageEl.onerror = function() {
+                this.src = 'https://placehold.co/600x400/FF0000/FFFFFF?text=Image+Not+Found'; 
+                galleryCaptionEl.textContent = 'Error: Local image file not found.';
+            };
         }
 
         /**
@@ -328,4 +335,3 @@
     </script>
 </body>
 </html>
-

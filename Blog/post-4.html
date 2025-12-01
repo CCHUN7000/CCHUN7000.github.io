@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF展示 - Blog</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6', // Blue primary color
+                        secondary: '#10B981', // Teal secondary color
+                        card: '#FFFFFF', // White cards
+                        text: {
+                            dark: '#1F2937', // Dark text
+                            muted: '#6B7280' // Muted text
+                        },
+                        background: '#F9FAFB' // Light background
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    
+    <!-- Custom Styles -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .transition-smooth {
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+        }
+    </style>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3B82F6;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #2563EB;
+        }
+    </style>
+</head>
+<body class="bg-background text-text-dark min-h-screen">
+    <!-- Header with Navigation -->
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <a href="../index.html#blog" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+                [Back]
+            </a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    <i class="fa fa-github mr-1"></i> GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Blog Post Header -->
+        <article class="bg-card rounded-xl shadow-lg p-8 border border-gray-200">
+            <header class="mb-8">
+                <h1 class="text-3xl sm:text-4xl font-bold text-primary mb-4 text-shadow">PDF展示功能</h1>
+                <div class="flex items-center text-text-muted text-sm">
+                    <span class="mr-4"><i class="fa fa-calendar mr-1"></i> 2025-11-26</span>
+                    <span><i class="fa fa-user mr-1"></i> Chunbo</span>
+                </div>
+            </header>
+
+            <!-- Blog Post Content -->
+            <div class="prose prose-blue max-w-none">
+                <p class="text-lg mb-6 leading-relaxed">
+                    这篇博客展示了如何在网页中嵌入和展示PDF文档。我们可以使用HTML5的iframe或embed标签来实现这个功能，让用户能够直接在浏览器中查看PDF内容，而不需要下载文件。
+                </p>
+
+                <h2 class="text-2xl font-bold text-primary mb-4 mt-8">PDF文档展示</h2>
+                <p class="mb-4">
+                    下面是一个PDF文档的嵌入式展示。您可以使用上方的导航控件来浏览文档的不同页面，也可以缩放查看详细内容。
+                </p>
+
+                <!-- PDF Viewer Section -->
+                <div class="my-8 border-2 border-primary/30 rounded-lg overflow-hidden shadow-lg bg-white p-4">
+                    <h3 class="text-lg font-semibold mb-3 text-center text-primary">嵌入式PDF查看器</h3>
+                    
+                    <!-- PDF Embed using iframe -->
+                    <div class="mb-6">
+                        <h4 class="font-medium mb-2 text-text-dark">使用iframe嵌入PDF：</h4>
+                        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+                            <iframe 
+                                src="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" 
+                                width="100%" 
+                                height="500px" 
+                                type="application/pdf"
+                                class="rounded border border-gray-300"
+                                title="示例PDF文档"
+                                frameborder="0"
+                            ></iframe>
+                        </div>
+                    </div>
+
+                    <!-- PDF Embed using embed tag -->
+                    <div>
+                        <h4 class="font-medium mb-2 text-text-dark">使用embed标签嵌入PDF：</h4>
+                        <div class="bg-gray-50 rounded-lg p-2 border border-gray-200">
+                            <embed 
+                                src="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" 
+                                width="100%" 
+                                height="500px" 
+                                type="application/pdf"
+                                class="rounded border border-gray-300"
+                                title="示例PDF文档"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="text-2xl font-bold text-primary mb-4 mt-10">实现说明</h2>
+                <p class="mb-4">
+                    在网页中嵌入PDF文档有几种常见方法：
+                </p>
+                <ul class="list-disc pl-6 space-y-2 mb-6">
+                    <li><strong>iframe标签</strong>：最常用的方法，兼容性好，支持大多数浏览器。</li>
+                    <li><strong>embed标签</strong>：HTML5标准，用于嵌入外部内容。</li>
+                    <li><strong>object标签</strong>：更灵活的嵌入方式，支持备用内容。</li>
+                    <li><strong>第三方库</strong>：如PDF.js，提供更高级的PDF查看功能。</li>
+                </ul>
+
+                <h3 class="text-xl font-semibold text-primary mb-3 mt-6">使用iframe的基本语法</h3>
+                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto font-mono text-sm mb-6">
+                    <pre>&lt;iframe 
+    src="path/to/your/document.pdf" 
+    width="100%" 
+    height="500px" 
+    type="application/pdf"
+    title="PDF文档标题"
+    frameborder="0"
+&gt;&lt;/iframe&gt;</pre>
+                </div>
+
+                <h3 class="text-xl font-semibold text-primary mb-3 mt-6">使用embed的基本语法</h3>
+                <div class="bg-gray-100 p-4 rounded-lg overflow-x-auto font-mono text-sm mb-6">
+                    <pre>&lt;embed 
+    src="path/to/your/document.pdf" 
+    width="100%" 
+    height="500px" 
+    type="application/pdf"
+    title="PDF文档标题"
+/&gt;</pre>
+                </div>
+
+                <h2 class="text-2xl font-bold text-primary mb-4 mt-10">注意事项</h2>
+                <ul class="list-disc pl-6 space-y-2 mb-8">
+                    <li>确保PDF文件路径正确，并且服务器配置允许直接访问PDF文件。</li>
+                    <li>为了更好的用户体验，建议设置合适的宽度和高度，通常500-700px的高度比较适合阅读。</li>
+                    <li>添加适当的标题属性（title）以提高可访问性。</li>
+                    <li>考虑为不支持嵌入式PDF查看的浏览器提供备用内容或下载链接。</li>
+                    <li>对于大型PDF文件，可能需要添加加载指示器，提高用户体验。</li>
+                </ul>
+
+                <h2 class="text-2xl font-bold text-primary mb-4 mt-10">PDF下载选项</h2>
+                <p class="mb-4">
+                    除了在线查看，您也可以提供PDF文件的下载链接，方便用户保存文档：
+                </p>
+                <div class="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-8">
+                    <a 
+                        href="https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf" 
+                        download="示例文档.pdf"
+                        class="inline-flex items-center px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-blue-700 transition duration-300"
+                    >
+                        <i class="fa fa-download mr-2"></i> 下载示例PDF
+                    </a>
+                </div>
+            </div>
+        </article>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-card border-t border-gray-200 mt-12">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-text-muted text-sm">&copy; 2025 Chunbo. All rights reserved.</p>
+                </div>
+                <div class="flex space-x-6">
+                    <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300">
+                        <i class="fa fa-github text-xl"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

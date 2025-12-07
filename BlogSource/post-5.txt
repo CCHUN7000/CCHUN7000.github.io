@@ -1,0 +1,290 @@
+# Take a look at eBPF scheduler logic in Linux kernel
+
+Date: 7/12/2025
+Author: Chunbo
+
+## Intro
+
+After I learned some examples of sched-ext scheduler of Linux, I realized that the logic in Linux kernel is also important.
+Thus, I am recording the analysis of some source code in this blog.
+The Linux version is 6.18
+
+## Main Functions
+
+### Selecting a CPU for tasks
+When a task is looking for a CPU, we usually need to compare different CPUs and find the best one.
+We don't want make the task sad (waiting in a long queue, cache unfriendly, CPU is slow).
+Lets take a look at the default method of selecting a CPU (scx_select_cpu_dfl).
+
+#### Take a look at the comment first!
+The author provides us the comment, showing that the full-idle CPU is the most popular one (for SMT),
+or we want to reuse the smae CPU(prev_cpu is cache-friendly), or we choose other guys.
+```c
+/*
+ * Built-in CPU idle selection policy:
+ *
+ * 1. Prioritize full-idle cores:
+ *   - always prioritize CPUs from fully idle cores (both logical CPUs are
+ *     idle) to avoid interference caused by SMT.
+ *
+ * 2. Reuse the same CPU:
+ *   - prefer the last used CPU to take advantage of cached data (L1, L2) and
+ *     branch prediction optimizations.
+ *
+ * 3. Pick a CPU within the same LLC (Last-Level Cache):
+ *   - if the above conditions aren't met, pick a CPU that shares the same
+ *     LLC, if the LLC domain is a subset of @cpus_allowed, to maintain
+ *     cache locality.
+ *
+ * 4. Pick a CPU within the same NUMA node, if enabled:
+ *   - choose a CPU from the same NUMA node, if the node cpumask is a
+ *     subset of @cpus_allowed, to reduce memory access latency.
+ *
+ * 5. Pick any idle CPU within the @cpus_allowed domain.
+ *
+ * Step 3 and 4 are performed only if the system has, respectively,
+ * multiple LLCs / multiple NUMA nodes (see scx_selcpu_topo_llc and
+ * scx_selcpu_topo_numa) and they don't contain the same subset of CPUs.
+ *
+ * If %SCX_OPS_BUILTIN_IDLE_PER_NODE is enabled, the search will always
+ * begin in @prev_cpu's node and proceed to other nodes in order of
+ * increasing distance.
+ *
+ * Return the picked CPU if idle, or a negative value otherwise.
+ *
+ * NOTE: tasks that can only run on 1 CPU are excluded by this logic, because
+ * we never call ops.select_cpu() for them, see select_task_rq().
+ */
+ ```
+
+#### Before choosing CPU
+Initialization, and, which CPUs are allowed to choose? (cpu_mask)
+ ```c
+s32 scx_select_cpu_dfl(struct task_struct *p, s32 prev_cpu, u64 wake_flags,
+		       const struct cpumask *cpus_allowed, u64 flags)
+{
+	const struct cpumask *llc_cpus = NULL, *numa_cpus = NULL;
+	const struct cpumask *allowed = cpus_allowed ?: p->cpus_ptr;
+	int node = scx_cpu_node_if_enabled(prev_cpu);
+	bool is_prev_allowed;
+	s32 cpu;
+
+	preempt_disable();
+
+	/*
+	 * Check whether @prev_cpu is still within the allowed set. If not,
+	 * we can still try selecting a nearby CPU.
+	 */
+	is_prev_allowed = cpumask_test_cpu(prev_cpu, allowed);
+
+	/*
+	 * Determine the subset of CPUs usable by @p within @cpus_allowed.
+	 */
+	if (allowed != p->cpus_ptr) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_idle_cpumask);
+
+		if (task_affinity_all(p)) {
+			allowed = cpus_allowed;
+		} else if (cpumask_and(local_cpus, cpus_allowed, p->cpus_ptr)) {
+			allowed = local_cpus;
+		} else {
+			cpu = -EBUSY;
+			goto out_enable;
+		}
+	}
+
+	/*
+	 * This is necessary to protect llc_cpus.
+	 */
+	rcu_read_lock();
+
+	/*
+	 * Determine the subset of CPUs that the task can use in its
+	 * current LLC and node.
+	 *
+	 * If the task can run on all CPUs, use the node and LLC cpumasks
+	 * directly.
+	 */
+	if (static_branch_maybe(CONFIG_NUMA, &scx_selcpu_topo_numa)) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_numa_idle_cpumask);
+		const struct cpumask *cpus = numa_span(prev_cpu);
+
+		if (allowed == p->cpus_ptr && task_affinity_all(p))
+			numa_cpus = cpus;
+		else if (cpus && cpumask_and(local_cpus, allowed, cpus))
+			numa_cpus = local_cpus;
+	}
+
+	if (static_branch_maybe(CONFIG_SCHED_MC, &scx_selcpu_topo_llc)) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_llc_idle_cpumask);
+		const struct cpumask *cpus = llc_span(prev_cpu);
+
+		if (allowed == p->cpus_ptr && task_affinity_all(p))
+			llc_cpus = cpus;
+		else if (cpus && cpumask_and(local_cpus, allowed, cpus))
+			llc_cpus = local_cpus;
+	}
+```
+
+####WAKE_SYNC? What it is?
+Sometimes, the task has a "parent" (or "partner"?), who wake this task up.
+As the waker is on "smp_processor_id":
+If task's prev_cpu and waker's CPU share cache, and prev_cpu is empty, then no need to move
+If the waker's CPU queue is empty, the task is welcome!
+```c
+	/*
+	 * If WAKE_SYNC, try to migrate the wakee to the waker's CPU.
+	 */
+	if (wake_flags & SCX_WAKE_SYNC) {
+		int waker_node;
+
+		/*
+		 * If the waker's CPU is cache affine and prev_cpu is idle,
+		 * then avoid a migration.
+		 */
+		cpu = smp_processor_id();
+		if (is_prev_allowed && cpus_share_cache(cpu, prev_cpu) &&
+		    scx_idle_test_and_clear_cpu(prev_cpu)) {
+			cpu = prev_cpu;
+			goto out_unlock;
+		}
+
+		/*
+		 * If the waker's local DSQ is empty, and the system is under
+		 * utilized, try to wake up @p to the local DSQ of the waker.
+		 *
+		 * Checking only for an empty local DSQ is insufficient as it
+		 * could give the wakee an unfair advantage when the system is
+		 * oversaturated.
+		 *
+		 * Checking only for the presence of idle CPUs is also
+		 * insufficient as the local DSQ of the waker could have tasks
+		 * piled up on it even if there is an idle core elsewhere on
+		 * the system.
+		 */
+		waker_node = cpu_to_node(cpu);
+		if (!(current->flags & PF_EXITING) &&
+		    cpu_rq(cpu)->scx.local_dsq.nr == 0 &&
+		    (!(flags & SCX_PICK_IDLE_IN_NODE) || (waker_node == node)) &&
+		    !cpumask_empty(idle_cpumask(waker_node)->cpu)) {
+			if (cpumask_test_cpu(cpu, allowed))
+				goto out_unlock;
+		}
+	}
+```
+#### Special for SMT
+Just like the comment said: any wholly idle CPU is likely a better pick than partially idle @prev_cpu
+Thus, in this part, being wholly idle is the king. The choosing process follows:
+First, wholly idle prev_cpu is the best.
+Second, wholly idle core in same LLC domain.
+Third, any fully idle one in same NUMA.
+Fourth, any fully idle one.
+Otherwise, give up.
+```c
+	/*
+	 * If CPU has SMT, any wholly idle CPU is likely a better pick than
+	 * partially idle @prev_cpu.
+	 */
+	if (sched_smt_active()) {
+		/*
+		 * Keep using @prev_cpu if it's part of a fully idle core.
+		 */
+		if (is_prev_allowed &&
+		    cpumask_test_cpu(prev_cpu, idle_cpumask(node)->smt) &&
+		    scx_idle_test_and_clear_cpu(prev_cpu)) {
+			cpu = prev_cpu;
+			goto out_unlock;
+		}
+
+		/*
+		 * Search for any fully idle core in the same LLC domain.
+		 */
+		if (llc_cpus) {
+			cpu = pick_idle_cpu_in_node(llc_cpus, node, SCX_PICK_IDLE_CORE);
+			if (cpu >= 0)
+				goto out_unlock;
+		}
+
+		/*
+		 * Search for any fully idle core in the same NUMA node.
+		 */
+		if (numa_cpus) {
+			cpu = pick_idle_cpu_in_node(numa_cpus, node, SCX_PICK_IDLE_CORE);
+			if (cpu >= 0)
+				goto out_unlock;
+		}
+
+		/*
+		 * Search for any full-idle core usable by the task.
+		 *
+		 * If the node-aware idle CPU selection policy is enabled
+		 * (%SCX_OPS_BUILTIN_IDLE_PER_NODE), the search will always
+		 * begin in prev_cpu's node and proceed to other nodes in
+		 * order of increasing distance.
+		 */
+		cpu = scx_pick_idle_cpu(allowed, node, flags | SCX_PICK_IDLE_CORE);
+		if (cpu >= 0)
+			goto out_unlock;
+
+		/*
+		 * Give up if we're strictly looking for a full-idle SMT
+		 * core.
+		 */
+		if (flags & SCX_PICK_IDLE_CORE) {
+			cpu = -EBUSY;
+			goto out_unlock;
+		}
+	}
+```
+#### No SMT, or SMT failed
+In this part, we consider for the scenario without SMT. The logic is similar:
+Idle prev_cpu > Idle LLC > Idle NUMA > Any Idle
+```c
+	/*
+	 * Use @prev_cpu if it's idle.
+	 */
+	if (is_prev_allowed && scx_idle_test_and_clear_cpu(prev_cpu)) {
+		cpu = prev_cpu;
+		goto out_unlock;
+	}
+
+	/*
+	 * Search for any idle CPU in the same LLC domain.
+	 */
+	if (llc_cpus) {
+		cpu = pick_idle_cpu_in_node(llc_cpus, node, 0);
+		if (cpu >= 0)
+			goto out_unlock;
+	}
+
+	/*
+	 * Search for any idle CPU in the same NUMA node.
+	 */
+	if (numa_cpus) {
+		cpu = pick_idle_cpu_in_node(numa_cpus, node, 0);
+		if (cpu >= 0)
+			goto out_unlock;
+	}
+
+	/*
+	 * Search for any idle CPU usable by the task.
+	 *
+	 * If the node-aware idle CPU selection policy is enabled
+	 * (%SCX_OPS_BUILTIN_IDLE_PER_NODE), the search will always begin
+	 * in prev_cpu's node and proceed to other nodes in order of
+	 * increasing distance.
+	 */
+	cpu = scx_pick_idle_cpu(allowed, node, flags);
+
+out_unlock:
+	rcu_read_unlock();
+out_enable:
+	preempt_enable();
+
+	return cpu;
+}
+
+```
+
+### One Question: What if we can not find an idle one?
+#### Further code analysis

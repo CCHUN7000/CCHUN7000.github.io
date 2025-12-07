@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Take a look at eBPF scheduler logic in Linux kernel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for a nice font and a light mode theme -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    // Light color palette: Blue and various shades of white/gray
+                    colors: {
+                        'primary': '#3B82F6', // Blue accent
+                        'card': '#FFFFFF', // White card background
+                        'background': '#F9FAFB', // Very light gray background
+                        'text-dark': '#1F2937', // Dark gray/black for main text
+                        'text-muted': '#6B7280', // Medium gray for secondary text
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Apply smooth scrolling */
+        html { scroll-behavior: smooth; }
+        /* Custom styles for code blocks */
+        pre { white-space: pre-wrap; }
+        code { font-family: 'Fira Code', monospace; }
+        
+        /* 标题自动编号 */
+        .prose {
+          counter-reset: h2;
+        }
+
+        .prose h2 {
+          counter-reset: h3;
+        }
+
+        .prose h3 {
+          counter-reset: h4;
+        }
+
+        .prose h4 {
+          counter-reset: h5;
+        }
+
+        .prose h5 {
+          counter-reset: h6;
+        }
+
+        .prose h2::before {
+          counter-increment: h2;
+          content: counter(h2) ". ";
+        }
+
+        .prose h3::before {
+          counter-increment: h3;
+          content: counter(h2) "." counter(h3) ". ";
+        }
+
+        .prose h4::before {
+          counter-increment: h4;
+          content: counter(h2) "." counter(h3) "." counter(h4) ". ";
+        }
+
+        .prose h5::before {
+          counter-increment: h5;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". ";
+        }
+
+        .prose h6::before {
+          counter-increment: h6;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". ";
+        }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+
+    <!-- Header & Simple Navigation -->
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <a href="../index.html#blog" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+                [Back]
+            </a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <!-- Blog Post Header -->
+        <article class="bg-card p-6 sm:p-10 rounded-xl border border-gray-200 shadow-lg">
+            <h1 class="text-3xl sm:text-4xl font-bold mb-4 text-text-dark">
+                Take a look at eBPF scheduler logic in Linux kernel
+            </h1>
+            <div class="text-text-muted mb-8">
+                <span>7/12/2025</span>
+                <span class="mx-2">|</span>
+                <span>Chunbo</span>
+            </div>
+
+            <!-- Blog Post Content -->
+            <div class="prose prose-lg max-w-none text-text-dark">
+                <h2 class="text-2xl font-bold mb-4 text-primary">Intro</h2>
+                <p class="mb-6">
+                    After I learned some examples of sched-ext scheduler of Linux, I realized that the logic in Linux kernel is also important.
+                    Thus, I am recording the analysis of some source code in this blog.
+                    The Linux version is 6.18
+                </p>
+
+                <h2 class="text-2xl font-bold mb-4 text-primary">Main Functions</h2>
+
+                <h3 class="text-xl font-bold mb-3 text-primary">Selecting a CPU for tasks</h3>
+                <p class="mb-4">
+                    When a task is looking for a CPU, we usually need to compare different CPUs and find the best one.
+                    We don't want make the task sad (waiting in a long queue, cache unfriendly, CPU is slow).
+                    Lets take a look at the default method of selecting a CPU (scx_select_cpu_dfl).
+                </p>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Take a look at the comment first!</h4>
+                <p class="mb-4">
+                    The author provides us the comment, showing that the full-idle CPU is the most popular one (for SMT),
+                    or we want to reuse the smae CPU(prev_cpu is cache-friendly), or we choose other guys.
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>/*
+ * Built-in CPU idle selection policy:
+ *
+ * 1. Prioritize full-idle cores:
+ *   - always prioritize CPUs from fully idle cores (both logical CPUs are
+ *     idle) to avoid interference caused by SMT.
+ *
+ * 2. Reuse the same CPU:
+ *   - prefer the last used CPU to take advantage of cached data (L1, L2) and
+ *     branch prediction optimizations.
+ *
+ * 3. Pick a CPU within the same LLC (Last-Level Cache):
+ *   - if the above conditions aren't met, pick a CPU that shares the same
+ *     LLC, if the LLC domain is a subset of @cpus_allowed, to maintain
+ *     cache locality.
+ *
+ * 4. Pick a CPU within the same NUMA node, if enabled:
+ *   - choose a CPU from the same NUMA node, if the node cpumask is a
+ *     subset of @cpus_allowed, to reduce memory access latency.
+ *
+ * 5. Pick any idle CPU within the @cpus_allowed domain.
+ *
+ * Step 3 and 4 are performed only if the system has, respectively,
+ * multiple LLCs / multiple NUMA nodes (see scx_selcpu_topo_llc and
+ * scx_selcpu_topo_numa) and they don't contain the same subset of CPUs.
+ *
+ * If %SCX_OPS_BUILTIN_IDLE_PER_NODE is enabled, the search will always
+ * begin in @prev_cpu's node and proceed to other nodes in order of
+ * increasing distance.
+ *
+ * Return the picked CPU if idle, or a negative value otherwise.
+ *
+ * NOTE: tasks that can only run on 1 CPU are excluded by this logic, because
+ * we never call ops.select_cpu() for them, see select_task_rq().
+ */</code></pre>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Before choosing CPU</h4>
+                <p class="mb-4">
+                    Initialization, and, which CPUs are allowed to choose? (cpu_mask)
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>s32 scx_select_cpu_dfl(struct task_struct *p, s32 prev_cpu, u64 wake_flags,
+		       const struct cpumask *cpus_allowed, u64 flags)
+{
+	const struct cpumask *llc_cpus = NULL, *numa_cpus = NULL;
+	const struct cpumask *allowed = cpus_allowed ?: p->cpus_ptr;
+	int node = scx_cpu_node_if_enabled(prev_cpu);
+	bool is_prev_allowed;
+	s32 cpu;
+
+	preempt_disable();
+
+	/*
+	 * Check whether @prev_cpu is still within the allowed set. If not,
+	 * we can still try selecting a nearby CPU.
+	 */
+	is_prev_allowed = cpumask_test_cpu(prev_cpu, allowed);
+
+	/*
+	 * Determine the subset of CPUs usable by @p within @cpus_allowed.
+	 */
+	if (allowed != p->cpus_ptr) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_idle_cpumask);
+
+		if (task_affinity_all(p)) {
+			allowed = cpus_allowed;
+		} else if (cpumask_and(local_cpus, cpus_allowed, p->cpus_ptr)) {
+			allowed = local_cpus;
+		} else {
+			cpu = -EBUSY;
+			goto out_enable;
+		}
+	}
+
+	/*
+	 * This is necessary to protect llc_cpus.
+	 */
+	rcu_read_lock();
+
+	/*
+	 * Determine the subset of CPUs that the task can use in its
+	 * current LLC and node.
+	 *
+	 * If the task can run on all CPUs, use the node and LLC cpumasks
+	 * directly.
+	 */
+	if (static_branch_maybe(CONFIG_NUMA, &scx_selcpu_topo_numa)) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_numa_idle_cpumask);
+		const struct cpumask *cpus = numa_span(prev_cpu);
+
+		if (allowed == p->cpus_ptr && task_affinity_all(p))
+			numa_cpus = cpus;
+		else if (cpus && cpumask_and(local_cpus, allowed, cpus))
+			numa_cpus = local_cpus;
+	}
+
+	if (static_branch_maybe(CONFIG_SCHED_MC, &scx_selcpu_topo_llc)) {
+		struct cpumask *local_cpus = this_cpu_cpumask_var_ptr(local_llc_idle_cpumask);
+		const struct cpumask *cpus = llc_span(prev_cpu);
+
+		if (allowed == p->cpus_ptr && task_affinity_all(p))
+			llc_cpus = cpus;
+		else if (cpus && cpumask_and(local_cpus, allowed, cpus))
+			llc_cpus = local_cpus;
+	}</code></pre>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">WAKE_SYNC? What it is?</h4>
+                <p class="mb-4">
+                    Sometimes, the task has a "parent" (or "partner"?), who wake this task up (Makes me think of Shi Su and Huaimin Zhang).
+                    As the waker is on "smp_processor_id":
+                    If task's prev_cpu and waker's CPU share cache, and prev_cpu is empty, then no need to move
+                    If the waker's CPU queue is empty, the task is welcome!
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>/*
+ * If WAKE_SYNC, try to migrate the wakee to the waker's CPU.
+ */
+if (wake_flags & SCX_WAKE_SYNC) {
+	int waker_node;
+
+	/*
+	 * If the waker's CPU is cache affine and prev_cpu is idle,
+	 * then avoid a migration.
+	 */
+	cpu = smp_processor_id();
+	if (is_prev_allowed && cpus_share_cache(cpu, prev_cpu) &&
+	    scx_idle_test_and_clear_cpu(prev_cpu)) {
+		cpu = prev_cpu;
+		goto out_unlock;
+	}
+
+	/*
+	 * If the waker's local DSQ is empty, and the system is under
+	 * utilized, try to wake up @p to the local DSQ of the waker.
+	 *
+	 * Checking only for an empty local DSQ is insufficient as it
+	 * could give the wakee an unfair advantage when the system is
+	 * oversaturated.
+	 *
+	 * Checking only for the presence of idle CPUs is also
+	 * insufficient as the local DSQ of the waker could have tasks
+	 * piled up on it even if there is an idle core elsewhere on
+	 * the system.
+	 */
+	waker_node = cpu_to_node(cpu);
+	if (!(current->flags & PF_EXITING) &&
+	    cpu_rq(cpu)->scx.local_dsq.nr == 0 &&
+	    (!(flags & SCX_PICK_IDLE_IN_NODE) || (waker_node == node)) &&
+	    !cpumask_empty(idle_cpumask(waker_node)->cpu)) {
+		if (cpumask_test_cpu(cpu, allowed))
+			goto out_unlock;
+	}
+}</code></pre>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Special for SMT</h4>
+                <p class="mb-4">
+                    Just like the comment said: any wholly idle CPU is likely a better pick than partially idle @prev_cpu
+                    Thus, in this part, being wholly idle is the king. The choosing process follows:
+                    First, wholly idle prev_cpu is the best.
+                    Second, wholly idle core in same LLC domain.
+                    Third, any fully idle one in same NUMA.
+                    Fourth, any fully idle one.
+                    Otherwise, give up.
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>/*
+ * If CPU has SMT, any wholly idle CPU is likely a better pick than
+ * partially idle @prev_cpu.
+ */
+if (sched_smt_active()) {
+	/*
+	 * Keep using @prev_cpu if it's part of a fully idle core.
+	 */
+	if (is_prev_allowed &&
+	    cpumask_test_cpu(prev_cpu, idle_cpumask(node)->smt) &&
+	    scx_idle_test_and_clear_cpu(prev_cpu)) {
+		cpu = prev_cpu;
+		goto out_unlock;
+	}
+
+	/*
+	 * Search for any fully idle core in the same LLC domain.
+	 */
+	if (llc_cpus) {
+		cpu = pick_idle_cpu_in_node(llc_cpus, node, SCX_PICK_IDLE_CORE);
+		if (cpu >= 0)
+			goto out_unlock;
+	}
+
+	/*
+	 * Search for any fully idle core in the same NUMA node.
+	 */
+	if (numa_cpus) {
+		cpu = pick_idle_cpu_in_node(numa_cpus, node, SCX_PICK_IDLE_CORE);
+		if (cpu >= 0)
+			goto out_unlock;
+	}
+
+	/*
+	 * Search for any full-idle core usable by the task.
+	 *
+	 * If the node-aware idle CPU selection policy is enabled
+	 * (%SCX_OPS_BUILTIN_IDLE_PER_NODE), the search will always
+	 * begin in prev_cpu's node and proceed to other nodes in
+	 * order of increasing distance.
+	 */
+	cpu = scx_pick_idle_cpu(allowed, node, flags | SCX_PICK_IDLE_CORE);
+	if (cpu >= 0)
+		goto out_unlock;
+
+	/*
+	 * Give up if we're strictly looking for a full-idle SMT
+	 * core.
+	 */
+	if (flags & SCX_PICK_IDLE_CORE) {
+		cpu = -EBUSY;
+		goto out_unlock;
+	}
+}</code></pre>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">No SMT, or SMT failed</h4>
+                <p class="mb-4">
+                    In this part, we consider for the scenario without SMT. The logic is similar:
+                    Idle prev_cpu > Idle LLC > Idle NUMA > Any Idle
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>/*
+ * Use @prev_cpu if it's idle.
+ */
+if (is_prev_allowed && scx_idle_test_and_clear_cpu(prev_cpu)) {
+	cpu = prev_cpu;
+	goto out_unlock;
+}
+
+/*
+ * Search for any idle CPU in the same LLC domain.
+ */
+if (llc_cpus) {
+	cpu = pick_idle_cpu_in_node(llc_cpus, node, 0);
+	if (cpu >= 0)
+		goto out_unlock;
+}
+
+/*
+ * Search for any idle CPU in the same NUMA node.
+ */
+if (numa_cpus) {
+	cpu = pick_idle_cpu_in_node(numa_cpus, node, 0);
+	if (cpu >= 0)
+		goto out_unlock;
+}
+
+/*
+ * Search for any idle CPU usable by the task.
+ *
+ * If the node-aware idle CPU selection policy is enabled
+ * (%SCX_OPS_BUILTIN_IDLE_PER_NODE), the search will always begin
+ * in prev_cpu's node and proceed to other nodes in order of
+ * increasing distance.
+ */
+cpu = scx_pick_idle_cpu(allowed, node, flags);
+
+out_unlock:
+	rcu_read_unlock();
+out_enable:
+	preempt_enable();
+
+	return cpu;
+}</code></pre>
+
+                <h3 class="text-xl font-bold mb-3 text-primary">One Question: What if we can not find an idle one?</h3>
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Further code analysis</h4>
+            </div>
+
+            <!-- Back to Blog List Button -->
+            <div class="mt-10">
+                <a href="../index.html#blog" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to Blog List
+                </a>
+            </div>
+        </article>
+    </main>
+
+    <!-- Footer (Minimalist) -->
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo.</p>
+            <div class="mt-2 flex justify-center space-x-4">
+                    <a href="https://github.com/CCHUN7000" target="_blank" class="hover:text-primary transition duration-300">GitHub</a>
+                </div>
+        </div>
+    </footer>
+</body>
+</html>

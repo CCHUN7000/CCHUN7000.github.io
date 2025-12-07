@@ -29,6 +29,52 @@
     <style>
         /* Apply smooth scrolling */
         html { scroll-behavior: smooth; }
+        
+        /* 标题自动编号 */
+        .prose {
+          counter-reset: h2;
+        }
+
+        .prose h2 {
+          counter-reset: h3;
+        }
+
+        .prose h3 {
+          counter-reset: h4;
+        }
+
+        .prose h4 {
+          counter-reset: h5;
+        }
+
+        .prose h5 {
+          counter-reset: h6;
+        }
+
+        .prose h2::before {
+          counter-increment: h2;
+          content: counter(h2) ". ";
+        }
+
+        .prose h3::before {
+          counter-increment: h3;
+          content: counter(h2) "." counter(h3) ". ";
+        }
+
+        .prose h4::before {
+          counter-increment: h4;
+          content: counter(h2) "." counter(h3) "." counter(h4) ". ";
+        }
+
+        .prose h5::before {
+          counter-increment: h5;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". ";
+        }
+
+        .prose h6::before {
+          counter-increment: h6;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". ";
+        }
     </style>
 </head>
 <body class="font-sans bg-background text-text-dark min-h-screen">

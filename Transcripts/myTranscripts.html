@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Transcripts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom Tailwind configuration */
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .transition-smooth {
+                transition: all 0.3s ease-in-out;
+            }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#06B6D4',
+                        accent: '#8B5CF6',
+                        background: '#F8FAFC',
+                        card: '#FFFFFF',
+                        text: {
+                            light: '#94A3B8',
+                            dark: '#334155',
+                        },
+                    },
+                },
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-text-dark">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header Section -->
+        <header class="text-center mb-12">
+            <h1 class="text-3xl font-bold text-primary mb-4">My Transcripts</h1>
+            <p class="text-text-light text-lg">Download my academic transcripts</p>
+        </header>
+
+        <!-- Transcripts Container -->
+        <div class="bg-card rounded-xl shadow-lg p-8 border border-gray-200">
+            <div class="flex flex-col items-center justify-center">
+                <!-- Transcripts Icon -->
+                <div class="text-6xl text-primary mb-6">
+                    <i class="fas fa-graduation-cap"></i>
+                </div>
+
+                <!-- Transcripts Description -->
+                <div class="text-center mb-8">
+                    <h2 class="text-xl font-semibold mb-2">Academic Transcripts</h2>
+                    <p class="text-text-light">View and download my complete academic records</p>
+                </div>
+
+                <!-- Download Buttons -->
+                <div class="space-y-4">
+                    <a href="TranscriptsSource/Li Chunbo-NTU-Transcript_G2103211G.pdf" target="_blank" download class="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-smooth">
+                        <i class="fas fa-download mr-2"></i>
+                        NTU Transcript
+                    </a>
+                    <a href="TranscriptsSource/Li Chunbo-Transcript-Tongji-20210309.pdf" target="_blank" download class="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-smooth">
+                        <i class="fas fa-download mr-2"></i>
+                        Tongji Transcript
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer with Back to Home Button -->
+        <footer class="mt-12 text-center">
+            <div class="flex justify-center space-x-4">
+                <a href="../index.html" class="inline-flex items-center px-4 py-2 bg-gray-200 text-text-dark font-medium rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-smooth">
+                    <i class="fas fa-home mr-2"></i>
+                    Back to Home
+                </a>
+                <a href="../CV/mycv.html" class="inline-flex items-center px-4 py-2 bg-secondary text-white font-medium rounded-lg hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-secondary-500 focus:ring-offset-2 transition-smooth">
+                    <i class="fas fa-file-alt mr-2"></i>
+                    Back to CV
+                </a>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

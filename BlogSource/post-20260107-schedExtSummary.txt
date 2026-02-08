@@ -1,0 +1,219 @@
+# Analyzing sched_ext Enqueue Logic in Linux Kernel
+
+Date: 6/1/2026
+Author: Chunbo
+
+## Introduction
+
+This blog starts the exploration of sched-ext scheduler. According to the 
+different operations that a process does in kernel, sched-ext offers hooks
+for customlizing the scheduling behavior.
+
+```c
+Kernel Scheduler Core
+│
+├── Process Creation / Fork
+│      │
+│      └── scx_fork()
+│             └── scx_init_task()
+│                    └── [BPF init_task] → SCX_CALL_OP(init_task)
+│
+├── Task Wakeup / Becomes Runnable
+│      │
+│      └── select_task_rq_scx()
+│             └── [BPF select_cpu] → SCX_CALL_OP(select_cpu)
+│                    └── (optional) scx_bpf_dsq_insert(...) → sets ddsp_dsq_id
+│
+│      └── enqueue_task_scx()
+│             └── do_enqueue_task()
+│                    ├── if (ddsp_dsq_id != INVALID) → direct_dispatch()
+│                    │
+│                    ├── else if (bypass mode / exiting / migration-disabled)
+│                    │        └── dispatch_enqueue(Local/Global DSQ)
+│                    │
+│                    └── else
+│                           └── [BPF enqueue] → SCX_CALL_OP(enqueue)
+│                                  └── (optional) scx_bpf_dsq_insert(...) → direct_dispatch()
+│
+├── Scheduling Cycle (per-CPU tick / idle wake)
+│      │
+│      └── balance_scx()
+│             └── balance_one()
+│                    └── [BPF dispatch] → SCX_CALL_OP(dispatch)
+│                           └── BPF calls scx_bpf_dsq_insert(...) ×N
+│                                  └── flush_dispatch_buf()
+│                                         └── finish_dispatch()
+│                                                └── dispatch_enqueue(DSQ)
+│
+├── Task Selected to Run
+│      │
+│      └── pick_task_scx() → from local DSQ
+│      └── set_next_task_scx()
+│             └── [BPF running] → SCX_CALL_OP(running)
+│
+├── Task Preempted / Slice Exhausted
+│      │
+│      └── put_prev_task_scx()
+│             └── [BPF stopping] → SCX_CALL_OP(stopping, runnable=false)
+│             └── do_enqueue_task() → re-enqueue
+│
+├── Task Sleeps / Exits / Migrates
+│      │
+│      └── dequeue_task_scx()
+│             ├── [BPF stopping] → SCX_CALL_OP(stopping, runnable=true)
+│             ├── [BPF quiescent] → SCX_CALL_OP(quiescent)
+│             └── [BPF dequeue] → SCX_CALL_OP(dequeue)
+│
+├── Policy Change (to/from SCHED_EXT)
+│      │
+│      ├── switching_to_scx()
+│      │      ├── [BPF enable] → SCX_CALL_OP(enable)
+│      │      ├── [BPF set_weight] → SCX_CALL_OP(set_weight)
+│      │      └── [BPF set_cpumask] → SCX_CALL_OP(set_cpumask)
+│      │
+│      └── switched_from_scx()
+│             └── [BPF disable] → SCX_CALL_OP(disable)
+│
+├── CPU Hotplug
+│      │
+│      ├── rq_online_scx()
+│      │      └── [BPF cpu_online] → SCX_CALL_OP(cpu_online)
+│      │
+│      └── rq_offline_scx()
+│             └── [BPF cpu_offline] → SCX_CALL_OP(cpu_offline)
+│
+├── sched_yield()
+│      │
+│      └── yield_task_scx()
+│             └── [BPF yield] → SCX_CALL_OP(yield)
+│
+├── Priority / Affinity Change
+│      │
+│      ├── reweight_task_scx()
+│      │      └── [BPF set_weight] → SCX_CALL_OP(set_weight)
+│      │
+│      └── set_cpus_allowed_scx()
+│             └── [BPF set_cpumask] → SCX_CALL_OP(set_cpumask)
+│
+├── Timer Tick (HZ rate)
+│      │
+│      └── task_tick_scx()
+│             └── [BPF tick] → SCX_CALL_OP(tick)
+│
+└── Process Exit
+       │
+       └── sched_ext_free()
+              └── scx_exit_task()
+                     └── [BPF exit_task] → SCX_CALL_OP(exit_task)
+```
+
+Furthermore, we can add the state changes of tasks into the graph:
+
+```c
+                     ┌──────────────────────┐
+                     │       CREATED        │
+                     │ (after fork/clone)   │
+                     └──────────┬───────────┘
+                                │
+                                ▼
+                   scx_init_task() → [BPF init_task]
+                                │
+                                ▼
+                     ┌──────────────────────┐
+                     │      RUNNABLE        │ ◄───────────────────────────────┐
+                     │ (in DSQ, ready to run)│                               │
+                     └──────────┬───────────┘                               │
+       ┌───────────────────────┼───────────────────────┐                   │
+       │                       ▼                       │                   │
+       │          select_task_rq_scx()                 │                   │
+       │                 │                             │                   │
+       │                 ▼                             │                   │
+       │        [BPF select_cpu]                       │                   │
+       │                 │                             │                   │
+       │                 ▼                             │                   │
+       │        enqueue_task_scx()                     │                   │
+       │                 │                             │                   │
+       │                 ▼                             │                   │
+       │        do_enqueue_task()                      │                   │
+       │        ├─→ [BPF runnable]                     │                   │
+       │        └─→ [BPF enqueue]                      │                   │
+       │                       │                       │                   │
+       │                       ▼                       │                   │
+       │               dispatch_enqueue()              │                   │
+       │                                               │                   │
+       │                                               │                   │
+       │                                               │                   │
+       │                                               ▼                   │
+       │                                    pick_task_scx()                │
+       │                                               │                   │
+       │                                               ▼                   │
+       │                                    set_next_task_scx()           │
+       │                                               │                   │
+       │                                               ▼                   │
+       │                                      [BPF running]               │
+       │                                               │                   │
+       └───────────────────────────────────────────────┼───────────────────┘
+                                                       ▼
+                                        ┌──────────────────────────┐
+                                        │        RUNNING           │
+                                        │ (executing on CPU)       │
+                                        └───────────┬──────────────┘
+          ┌───────────────────────────────────────────┼───────────────────────────────────────────────┐
+          │                                           │                                               │
+          ▼                                           ▼                                               ▼
+task_tick_scx()                         put_prev_task_scx()                              dequeue_task_scx()
+     │                                         │                                               │
+     ▼                                         ▼                                               ▼
+[BPF tick]                          [BPF stopping (runnable=false)]                [BPF stopping (runnable=true)]
+     │                                         │                                  [BPF quiescent]
+     │                                         │                                  [BPF dequeue]
+     │                                         │                                               │
+     │                                         ▼                                               ▼
+     │                                do_enqueue_task()                             ┌──────────────────────┐
+     │                                         │                                  │    NOT RUNNABLE      │
+     │                                         ▼                                  │ (sleeping / blocked) │
+     └───────────────────────────────► back to RUNNABLE ◄──────────────────────────┴───────────┬──────────┘
+                                                                                               │
+                                                                                               │ (later wakeup)
+                                                                                               ▼
+                                                                                 enqueue_task_scx() → RUNNABLE
+                                                                                               ▲
+                                                                                               │
+                                                                                               │
+                                                                                 ┌─────────────┴─────────────┐
+                                                                                 │        EXITING            │
+                                                                                 │ (PF_EXITING set)          │
+                                                                                 └─────────────┬─────────────┘
+                                                                                               │
+                                                                                   scx_exit_task()
+                                                                                               │
+                                                                                      [BPF exit_task]
+                                                                                               │
+                                                                                               ▼
+                                                                                      ┌──────────────────────┐
+                                                                                      │         DEAD         │
+                                                                                      │ (freed by release_task)│
+                                                                                      └──────────────────────┘
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Additional Transitions (Orthogonal Events):
+
+• Policy Change TO SCX:
+    switching_to_scx() → [BPF enable, set_weight, set_cpumask] → enqueue_task_scx() → RUNNABLE
+
+• Policy Change FROM SCX:
+    switched_from_scx() → [BPF disable] → dequeue_task_scx() → NOT RUNNABLE
+
+• CPU Hotplug:
+    rq_online_scx()  → [BPF cpu_online]
+    rq_offline_scx() → [BPF cpu_offline]
+
+• sched_yield():
+    yield_task_scx() → [BPF yield] → (default: slice=0 → put_prev_task_scx() → RUNNABLE)
+
+• Priority / Affinity Change:
+    reweight_task_scx()       → [BPF set_weight]
+    set_cpus_allowed_scx()    → [BPF set_cpumask]
+```
+
+## A Brief Look at Each Functions (to be done)

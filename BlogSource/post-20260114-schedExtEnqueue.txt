@@ -1,0 +1,240 @@
+# Analyzing sched_ext Enqueue Logic in Linux Kernel
+
+Date: 6/1/2026
+Author: Chunbo
+
+## Introduction
+
+After exploring the CPU selection logic in sched_ext, I'm now delving into the enqueue mechanism. 
+
+```c
+scheduler_scx
+   │
+   ├── enqueue_task_scx()
+   │      │
+   │      └── do_enqueue_task()
+   │             │
+   │             ├── [BPF decision point]
+   │             │      SCX_CALL_OP(..., enqueue, ...)
+   │             │       │
+   │             │       └── scx_bpf_dsq_insert()
+   │             │             → set p->scx.ddsp_dsq_id
+   │             │
+   │             └── direct_dispatch() or bypass path
+   │                    │
+   │                    └── dispatch_enqueue()
+   │                         (execution only, no policy)
+
+```
+
+
+## Core Enqueue Functions---(enqueue_task_scx)
+In this blog, I want to analyze how scheduler behavie. 
+When SCX provides no enqueue op, how does the kernel ensure tasks are still enqueued correctly?
+Thus, we start from enqueue_task_scx.
+
+### Before We start
+What should we exactly do when we put a task into a queue? Well, we have a lot of choice right?
+It is hard to say what's the best choice. But wait, maybe we should take a look at what
+we must NOT do, and also find out what we can do.
+
+So the first question is: How many queues can we choose?
+Two (At least in default SCX there are two queues):
+Local DSQ---Each are assigned to a specific CPU,
+Global DSQ---Shared by CPUs, for load-balancing.
+
+And the second question: What we must NOT do?
+We have to take care of corner cases: Scheduler changes, CPU hotplug...
+
+### Beginning of Enqueue Process 
+In the beginning, we get the scx_root, which represents the eBPF scheduler.
+Also, we obtain the sticky_cpu to check if the task is stick to 
+a specific CPU. For example, this task might be frozen or just saved to a 
+specific status.
+
+```c
+static void enqueue_task_scx(struct rq *rq, struct task_struct *p, int enq_flags)
+{
+	struct scx_sched *sch = scx_root;
+	int sticky_cpu = p->scx.sticky_cpu;
+
+	if (enq_flags & ENQUEUE_WAKEUP)
+		rq->scx.flags |= SCX_RQ_IN_WAKEUP;
+
+	enq_flags |= rq->scx.extra_enq_flags;
+
+	if (sticky_cpu >= 0)
+		p->scx.sticky_cpu = -1;
+```
+Then, as the comment says, sticky_cpu is used to force direct_dispatching for
+those frozen tasks.
+
+```c
+	/*
+	 * Restoring a running task will be immediately followed by
+	 * set_next_task_scx() which expects the task to not be on the BPF
+	 * scheduler as tasks can only start running through local DSQs. Force
+	 * direct-dispatch into the local DSQ by setting the sticky_cpu.
+	 */
+	if (unlikely(enq_flags & ENQUEUE_RESTORE) && task_current(rq, p))
+		sticky_cpu = cpu_of(rq);
+
+	if (p->scx.flags & SCX_TASK_QUEUED) {
+		WARN_ON_ONCE(!task_runnable(p));
+		goto out;
+	}
+```
+
+If this task is not a frozen guy, then it will be set as runnable and queued,
+and we use "do_enqueue_task" to do further works. Wait, please note that a 
+SCX "runnable" function will be called here if it is defined.
+
+```c
+	set_task_runnable(rq, p);
+	p->scx.flags |= SCX_TASK_QUEUED;
+	rq->scx.nr_running++;
+	add_nr_running(rq, 1);
+
+	if (SCX_HAS_OP(sch, runnable) && !task_on_rq_migrating(p))
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, runnable, rq, p, enq_flags);
+
+	if (enq_flags & SCX_ENQ_WAKEUP)
+		touch_core_sched(rq, p);
+
+	do_enqueue_task(rq, p, enq_flags, sticky_cpu);
+out:
+	rq->scx.flags &= ~SCX_RQ_IN_WAKEUP;
+
+	if ((enq_flags & SCX_ENQ_CPU_SELECTED) &&
+	    unlikely(cpu_of(rq) != p->scx.selected_cpu))
+		__scx_add_event(sch, SCX_EV_SELECT_CPU_FALLBACK, 1);
+}
+```
+
+##Move Forward---(do_enqueue_task)
+The "do_enqueue_task" function further conducts enqueue process.
+In the beginning of "do_enqueue_task", this function firstly handles 
+some special scenarios.
+```c
+           ┌───────────────┐
+           │ do_enqueue_task│
+           └───────┬───────┘
+                   │
+      ┌────────────┼──────────────────┐
+      │            │                  │
+  bypass        BPF enqueue        fallback
+   │                │                  │
+ global        ddsp_dsq_id?         global/local
+                   │
+             direct_dispatch
+
+```
+
+OK. Now let's start.
+```c
+static void do_enqueue_task(struct rq *rq, struct task_struct *p, u64 enq_flags,
+			    int sticky_cpu)
+{
+	struct scx_sched *sch = scx_root;
+	struct task_struct **ddsp_taskp;
+	unsigned long qseq;
+
+	WARN_ON_ONCE(!(p->scx.flags & SCX_TASK_QUEUED));
+
+	/* rq migration */
+	if (sticky_cpu == cpu_of(rq))
+		goto local_norefill;
+
+	/*
+	 * If !scx_rq_online(), we already told the BPF scheduler that the CPU
+	 * is offline and are just running the hotplug path. Don't bother the
+	 * BPF scheduler.
+	 */
+	if (!scx_rq_online(rq))
+		goto local;
+
+	if (scx_rq_bypassing(rq)) {
+		__scx_add_event(sch, SCX_EV_BYPASS_DISPATCH, 1);
+		goto global;
+	}
+
+	if (p->scx.ddsp_dsq_id != SCX_DSQ_INVALID)
+		goto direct;
+
+	/* see %SCX_OPS_ENQ_EXITING */
+	if (!(sch->ops.flags & SCX_OPS_ENQ_EXITING) &&
+	    unlikely(p->flags & PF_EXITING)) {
+		__scx_add_event(sch, SCX_EV_ENQ_SKIP_EXITING, 1);
+		goto local;
+	}
+
+	/* see %SCX_OPS_ENQ_MIGRATION_DISABLED */
+	if (!(sch->ops.flags & SCX_OPS_ENQ_MIGRATION_DISABLED) &&
+	    is_migration_disabled(p)) {
+		__scx_add_event(sch, SCX_EV_ENQ_SKIP_MIGRATION_DISABLED, 1);
+		goto local;
+	}
+```
+
+
+```c
+	if (unlikely(!SCX_HAS_OP(sch, enqueue)))
+		goto global;
+
+	/* DSQ bypass didn't trigger, enqueue on the BPF scheduler */
+	qseq = rq->scx.ops_qseq++ << SCX_OPSS_QSEQ_SHIFT;
+
+	WARN_ON_ONCE(atomic_long_read(&p->scx.ops_state) != SCX_OPSS_NONE);
+	atomic_long_set(&p->scx.ops_state, SCX_OPSS_QUEUEING | qseq);
+
+	ddsp_taskp = this_cpu_ptr(&direct_dispatch_task);
+	WARN_ON_ONCE(*ddsp_taskp);
+	*ddsp_taskp = p;
+
+	SCX_CALL_OP_TASK(sch, SCX_KF_ENQUEUE, enqueue, rq, p, enq_flags);
+```
+
+In SCX's enqueue, it uses scx_bpf_dsq_insert(), which will mark the 
+target DSQ. Thus, if ddsp_dsq_id is not invalid, then we go to direct, 
+and use "direct_dispatch" to formally assign the task.
+```c
+	*ddsp_taskp = NULL;
+	if (p->scx.ddsp_dsq_id != SCX_DSQ_INVALID)
+		goto direct;
+```
+
+Otherwise, here the target queue is not clear. 
+```
+	/*
+	 * If not directly dispatched, QUEUEING isn't clear yet and dispatch or
+	 * dequeue may be waiting. The store_release matches their load_acquire.
+	 */
+	atomic_long_set_release(&p->scx.ops_state, SCX_OPSS_QUEUED | qseq);
+	return;
+```
+
+But, we have a safety fallback: without BPF enqueue logic, sched_ext degenerates into a simple global-queue scheduler.
+
+```c
+direct:
+	direct_dispatch(sch, p, enq_flags);
+	return;
+
+local:
+	/*
+	 * For task-ordering, slice refill must be treated as implying the end
+	 * of the current slice. Otherwise, the longer @p stays on the CPU, the
+	 * higher priority it becomes from scx_prio_less()'s POV.
+	 */
+	touch_core_sched(rq, p);
+	refill_task_slice_dfl(p);
+local_norefill:
+	dispatch_enqueue(sch, &rq->scx.local_dsq, p, enq_flags);
+	return;
+
+global:
+	touch_core_sched(rq, p);	/* see the comment in local: */
+	refill_task_slice_dfl(p);
+	dispatch_enqueue(sch, find_global_dsq(p), p, enq_flags);
+}
+```

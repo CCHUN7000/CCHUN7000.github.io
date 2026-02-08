@@ -287,4 +287,29 @@ out_enable:
 ```
 
 ### One Question: What if we can not find an idle one?
-#### Further code analysis
+#### Go back to scx_bpf_select_cpu_dfl
+If the previous code can not find an idel CPU, we just choose the prev_cpu after we go back to 
+scx_bpf_select_cpu_dfl
+
+```c
+__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
+				       u64 wake_flags, bool *is_idle)
+{
+	struct scx_sched *sch;
+	s32 cpu;
+
+	guard(rcu)();
+
+	sch = rcu_dereference(scx_root);
+	if (unlikely(!sch))
+		return -ENODEV;
+
+	cpu = select_cpu_from_kfunc(sch, p, prev_cpu, wake_flags, NULL, 0);
+	if (cpu >= 0) {
+		*is_idle = true;
+		return cpu;
+	}
+	*is_idle = false;
+	return prev_cpu;
+}
+```

@@ -1,0 +1,66 @@
+# Analyzing sched_ext Task Tick Logic in Linux Kernel
+
+Date: 25/1/2026
+Author: Chunbo
+
+## Introduction
+The function task_tick_scx is a key function for refresh timestamp at each CPU tick.
+
+
+## Key Function -- task_tick_scx
+When task_tick_scx is called, the first mission is update the time by
+calling update_curr_scx.
+
+Afterwards:
+1. If SCX is disabling, set current task's slice to 0 and refresh the 
+running queue using touch_core_sched.
+2. Otherwise, call SCX_CALL_OP_TASK if it is available.
+3. Finally, re-sched current running queue if current task runs out of slice.
+
+```c
+static void task_tick_scx(struct rq *rq, struct task_struct *curr, int queued)
+{
+	struct scx_sched *sch = scx_root;
+
+	update_curr_scx(rq);
+
+	/*
+	 * While disabling, always resched and refresh core-sched timestamp as
+	 * we can't trust the slice management or ops.core_sched_before().
+	 */
+	if (scx_rq_bypassing(rq)) {
+		curr->scx.slice = 0;
+		touch_core_sched(rq, curr);
+	} else if (SCX_HAS_OP(sch, tick)) {
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, tick, rq, curr);
+	}
+
+	if (!curr->scx.slice)
+		resched_curr(rq);
+}
+```
+
+## Key Function -- update_curr_scx
+
+Function update_curr_scx gets the execution time delta by calling update_curr_common.
+When delta_exec is valid (delta_exec>0), and current task is not a forever running
+task, update curr->scx.slice by minusing delta_exec.
+If current task runs out of slice, call touch_core_sched and schedule a new task.
+
+```c
+static void update_curr_scx(struct rq *rq)
+{
+	struct task_struct *curr = rq->curr;
+	s64 delta_exec;
+
+	delta_exec = update_curr_common(rq);
+	if (unlikely(delta_exec <= 0))
+		return;
+
+	if (curr->scx.slice != SCX_SLICE_INF) {
+		curr->scx.slice -= min_t(u64, curr->scx.slice, delta_exec);
+		if (!curr->scx.slice)
+			touch_core_sched(rq, curr);
+	}
+}
+```

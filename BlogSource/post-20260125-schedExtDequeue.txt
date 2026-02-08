@@ -1,0 +1,139 @@
+# Analyzing sched_ext Task Dequeue Logic in Linux Kernel
+
+Date: 25/1/2026
+Author: Chunbo
+
+## Introduction
+
+
+## Key Function -- dequeue_task_scx
+
+The function dequeue_task_scx defines how task leaves the queue.
+In the first step, check if this task queued and dequeuing is called by mistake.
+
+```c
+static bool dequeue_task_scx(struct rq *rq, struct task_struct *p, int deq_flags)
+{
+	struct scx_sched *sch = scx_root;
+
+	if (!(p->scx.flags & SCX_TASK_QUEUED)) {
+		WARN_ON_ONCE(task_runnable(p));
+		return true;
+	}
+```
+
+After making sure the dequeuing is reasonable:
+1. To use the SCX's dequeue functions, call ops_dequeue, which we will look into it later.
+
+2. Said by the comment, transitions between running and stopping should be 
+contained within the transitions between runnable and quiescent.
+Thus, by design, here the stopping process is triggered early, instead of 
+being triggered in put_prev_task_scx.
+As a result, here we call SCX's stopping and quiescent if it is defined.
+
+3. Also, between dequeue_task_scx and put_prev_task_scx, the transitions does not 
+contians meaningful information for SCX scheduler,
+ thus here we set p->scx.flags &= ~SCX_TASK_QUEUED
+
+```c
+	ops_dequeue(rq, p, deq_flags);
+
+	/*
+	 * A currently running task which is going off @rq first gets dequeued
+	 * and then stops running. As we want running <-> stopping transitions
+	 * to be contained within runnable <-> quiescent transitions, trigger
+	 * ->stopping() early here instead of in put_prev_task_scx().
+	 *
+	 * @p may go through multiple stopping <-> running transitions between
+	 * here and put_prev_task_scx() if task attribute changes occur while
+	 * balance_one() leaves @rq unlocked. However, they don't contain any
+	 * information meaningful to the BPF scheduler and can be suppressed by
+	 * skipping the callbacks if the task is !QUEUED.
+	 */
+	if (SCX_HAS_OP(sch, stopping) && task_current(rq, p)) {
+		update_curr_scx(rq);
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, stopping, rq, p, false);
+	}
+
+	if (SCX_HAS_OP(sch, quiescent) && !task_on_rq_migrating(p))
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, quiescent, rq, p, deq_flags);
+
+	if (deq_flags & SCX_DEQ_SLEEP)
+		p->scx.flags |= SCX_TASK_DEQD_FOR_SLEEP;
+	else
+		p->scx.flags &= ~SCX_TASK_DEQD_FOR_SLEEP;
+
+	p->scx.flags &= ~SCX_TASK_QUEUED;
+	rq->scx.nr_running--;
+	sub_nr_running(rq, 1);
+
+	dispatch_dequeue(rq, p);
+	return true;
+}
+
+```
+
+## Key Function -- ops_dequeue
+
+When task is dequeuing:
+1. Call clr_task_runnable with "false" parameter, which only performs
+list_del_init(&p->scx.runnable_node), but does not change the p->scx.flags.
+2. Choose different methods according to ops_state:
+a. SCX_OPSS_NONE: Do nothing.
+b. SCX_OPSS_QUEUEING: Dequeuing and Queuing are both holding the rq lock? It's a bug.
+c. SCX_OPSS_QUEUED: This task has already been put into the queue, so just call
+SCX's dequeue operation, and then fallthrough to SCX_OPSS_DISPATCHING.
+d. SCX_OPSS_DISPATCHING: Wait for the dispatching to be done, and check if the task's state
+becomes SCX_OPSS_NONE at last.
+
+```c
+static void ops_dequeue(struct rq *rq, struct task_struct *p, u64 deq_flags)
+{
+	struct scx_sched *sch = scx_root;
+	unsigned long opss;
+
+	/* dequeue is always temporary, don't reset runnable_at */
+	clr_task_runnable(p, false);
+
+	/* acquire ensures that we see the preceding updates on QUEUED */
+	opss = atomic_long_read_acquire(&p->scx.ops_state);
+
+	switch (opss & SCX_OPSS_STATE_MASK) {
+	case SCX_OPSS_NONE:
+		break;
+	case SCX_OPSS_QUEUEING:
+		/*
+		 * QUEUEING is started and finished while holding @p's rq lock.
+		 * As we're holding the rq lock now, we shouldn't see QUEUEING.
+		 */
+		BUG();
+	case SCX_OPSS_QUEUED:
+		if (SCX_HAS_OP(sch, dequeue))
+			SCX_CALL_OP_TASK(sch, SCX_KF_REST, dequeue, rq,
+					 p, deq_flags);
+
+		if (atomic_long_try_cmpxchg(&p->scx.ops_state, &opss,
+					    SCX_OPSS_NONE))
+			break;
+		fallthrough;
+	case SCX_OPSS_DISPATCHING:
+		/*
+		 * If @p is being dispatched from the BPF scheduler to a DSQ,
+		 * wait for the transfer to complete so that @p doesn't get
+		 * added to its DSQ after dequeueing is complete.
+		 *
+		 * As we're waiting on DISPATCHING with the rq locked, the
+		 * dispatching side shouldn't try to lock the rq while
+		 * DISPATCHING is set. See dispatch_to_local_dsq().
+		 *
+		 * DISPATCHING shouldn't have qseq set and control can reach
+		 * here with NONE @opss from the above QUEUED case block.
+		 * Explicitly wait on %SCX_OPSS_DISPATCHING instead of @opss.
+		 */
+		wait_ops_state(p, SCX_OPSS_DISPATCHING);
+		BUG_ON(atomic_long_read(&p->scx.ops_state) != SCX_OPSS_NONE);
+		break;
+	}
+}
+
+```

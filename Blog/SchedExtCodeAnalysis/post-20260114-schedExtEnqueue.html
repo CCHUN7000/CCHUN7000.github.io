@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyzing sched_ext Enqueue Logic in Linux Kernel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for a nice font and a light mode theme -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    // Light color palette: Blue and various shades of white/gray
+                    colors: {
+                        'primary': '#3B82F6', // Blue accent
+                        'card': '#FFFFFF', // White card background
+                        'background': '#F9FAFB', // Very light gray background
+                        'text-dark': '#1F2937', // Dark gray/black for main text
+                        'text-muted': '#6B7280', // Medium gray for secondary text
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Apply smooth scrolling */
+        html { scroll-behavior: smooth; }
+        /* Custom styles for code blocks */
+        pre { white-space: pre-wrap; }
+        code { font-family: 'Fira Code', monospace; }
+        
+        /* 标题自动编号 */
+        .prose {
+          counter-reset: h2;
+        }
+
+        .prose h2 {
+          counter-reset: h3;
+        }
+
+        .prose h3 {
+          counter-reset: h4;
+        }
+
+        .prose h4 {
+          counter-reset: h5;
+        }
+
+        .prose h5 {
+          counter-reset: h6;
+        }
+
+        .prose h2::before {
+          counter-increment: h2;
+          content: counter(h2) ". ";
+        }
+
+        .prose h3::before {
+          counter-increment: h3;
+          content: counter(h2) "." counter(h3) ". ";
+        }
+
+        .prose h4::before {
+          counter-increment: h4;
+          content: counter(h2) "." counter(h3) "." counter(h4) ". ";
+        }
+
+        .prose h5::before {
+          counter-increment: h5;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". ";
+        }
+
+        .prose h6::before {
+          counter-increment: h6;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". ";
+        }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+
+    <!-- Header & Simple Navigation -->
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <a href="SchedExtSummary.html" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+                [Back]
+            </a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <!-- Blog Post Header -->
+        <article class="bg-card p-6 sm:p-10 rounded-xl border border-gray-200 shadow-lg">
+            <h1 class="text-3xl sm:text-4xl font-bold mb-4 text-text-dark">
+                Analyzing sched_ext Enqueue Logic in Linux Kernel
+            </h1>
+            <div class="text-text-muted mb-8">
+                <span>14/1/2026</span>
+                <span class="mx-2">|</span>
+                <span>Chunbo</span>
+            </div>
+
+            <!-- Blog Post Content -->
+            <div class="prose prose-lg max-w-none text-text-dark">
+                <h2 class="text-2xl font-bold mb-4 text-primary">Introduction</h2>
+                <p class="mb-6">
+                    After exploring the CPU selection logic in sched_ext, I'm now delving into the enqueue mechanism.
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>scheduler_scx
+   │
+   ├── enqueue_task_scx()
+   │      │
+   │      └── do_enqueue_task()
+   │             │
+   │             ├── [BPF 决策点 1] → SCX_CALL_OP(..., enqueue, ...) 
+   │             │       │
+   │             │       └── 可能调用 scx_bpf_dsq_insert() → 设置 ddsp_dsq_id
+   │             │
+   │             └── direct_dispatch() 或 bypass 路径
+   │                    │
+   │                    └── dispatch_enqueue()  ←─ 决策已定，只执行入队
+   │
+</code></pre>
+
+                <h2 class="text-2xl font-bold mb-4 text-primary">Core Enqueue Functions</h2>
+
+                <h3 class="text-xl font-bold mb-3 text-primary">Beginning of Enqueue Process</h3>
+                <p class="mb-4">
+                    In the beginning, we get the scx_root, which represents the eBPF scheduler.
+                    Also, we obtain the sticky_cpu to check if the task is stick to 
+                    a specific CPU.
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>static void enqueue_task_scx(struct rq *rq, struct task_struct *p, int enq_flags)
+{
+	struct scx_sched *sch = scx_root;
+	int sticky_cpu = p->scx.sticky_cpu;
+
+	if (enq_flags & ENQUEUE_WAKEUP)
+		rq->scx.flags |= SCX_RQ_IN_WAKEUP;
+
+	enq_flags |= rq->scx.extra_enq_flags;
+
+	if (sticky_cpu >= 0)
+		p->scx.sticky_cpu = -1;
+</code></pre>
+
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>	/*
+	 * Restoring a running task will be immediately followed by
+	 * set_next_task_scx() which expects the task to not be on the BPF
+	 * scheduler as tasks can only start running through local DSQs. Force
+	 * direct-dispatch into the local DSQ by setting the sticky_cpu.
+	 */
+	if (unlikely(enq_flags & ENQUEUE_RESTORE) && task_current(rq, p))
+		sticky_cpu = cpu_of(rq);
+
+	if (p->scx.flags & SCX_TASK_QUEUED) {
+		WARN_ON_ONCE(!task_runnable(p));
+		goto out;
+	}
+
+	set_task_runnable(rq, p);
+	p->scx.flags |= SCX_TASK_QUEUED;
+	rq->scx.nr_running++;
+	add_nr_running(rq, 1);
+
+	if (SCX_HAS_OP(sch, runnable) && !task_on_rq_migrating(p))
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, runnable, rq, p, enq_flags);
+
+	if (enq_flags & SCX_ENQ_WAKEUP)
+		touch_core_sched(rq, p);
+
+	do_enqueue_task(rq, p, enq_flags, sticky_cpu);
+out:
+	rq->scx.flags &= ~SCX_RQ_IN_WAKEUP;
+
+	if ((enq_flags & SCX_ENQ_CPU_SELECTED) &&
+	    unlikely(cpu_of(rq) != p->scx.selected_cpu))
+		__scx_add_event(sch, SCX_EV_SELECT_CPU_FALLBACK, 1);
+}
+</code></pre>
+
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Function Prototype and Basic Structure</h4>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>static void enqueue_task_scx(struct rq *rq, struct task_struct *p, int enq_flags)
+{
+	struct scx_sched *sch = scx_root;
+	int sticky_cpu = p->scx.sticky_cpu;
+
+	if (enq_flags & ENQUEUE_WAKEUP)
+		rq->scx.flags |= SCX_RQ_IN_WAKEUP;
+
+	enq_flags |= rq->scx.extra_enq_flags;
+
+	if (sticky_cpu >= 0)
+		p->scx.sticky_cpu = -1;
+
+	/*
+	 * Restoring a running task will be immediately followed by
+	 * set_next_task_scx() which expects the task to not be on the BPF
+	 * scheduler as tasks can only start running through local DSQs. Force
+	 * direct-dispatch into the local DSQ by setting the sticky_cpu.
+	 */
+	if (unlikely(enq_flags & ENQUEUE_RESTORE) && task_current(rq, p))
+		sticky_cpu = cpu_of(rq);
+
+	if (p->scx.flags & SCX_TASK_QUEUED) {
+		WARN_ON_ONCE(!task_runnable(p));
+		goto out;
+	}
+
+	set_task_runnable(rq, p);
+	p->scx.flags |= SCX_TASK_QUEUED;
+	rq->scx.nr_running++;
+	add_nr_running(rq, 1);
+
+	if (SCX_HAS_OP(sch, runnable) && !task_on_rq_migrating(p))
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, runnable, rq, p, enq_flags);
+
+	if (enq_flags & SCX_ENQ_WAKEUP)
+		touch_core_sched(rq, p);
+
+	do_enqueue_task(rq, p, enq_flags, sticky_cpu);
+out:
+	rq->scx.flags &= ~SCX_RQ_IN_WAKEUP;
+
+	if ((enq_flags & SCX_ENQ_CPU_SELECTED) &&
+	    unlikely(cpu_of(rq) != p->scx.selected_cpu))
+		__scx_add_event(sch, SCX_EV_SELECT_CPU_FALLBACK, 1);
+}
+</code></pre>
+            </div>
+
+            <!-- Back to Blog List Button -->
+            <div class="mt-10">
+                <a href="SchedExtSummary.html" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to Summary
+                </a>
+            </div>
+        </article>
+    </main>
+
+    <!-- Footer (Minimalist) -->
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2026 Chunbo.</p>
+            <div class="mt-2 flex justify-center space-x-4">
+                    <a href="https://github.com/CCHUN7000" target="_blank" class="hover:text-primary transition duration-300">GitHub</a>
+                </div>
+        </div>
+    </footer>
+</body>
+</html>

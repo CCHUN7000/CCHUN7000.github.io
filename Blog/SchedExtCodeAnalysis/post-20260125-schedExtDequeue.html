@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyzing sched_ext Task Dequeue Logic in Linux Kernel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for a nice font and a light mode theme -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    // Light color palette: Blue and various shades of white/gray
+                    colors: {
+                        'primary': '#3B82F6', // Blue accent
+                        'card': '#FFFFFF', // White card background
+                        'background': '#F9FAFB', // Very light gray background
+                        'text-dark': '#1F2937', // Dark gray/black for main text
+                        'text-muted': '#6B7280', // Medium gray for secondary text
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Apply smooth scrolling */
+        html { scroll-behavior: smooth; }
+        
+        /* 标题自动编号 */
+        .prose {
+          counter-reset: h2;
+        }
+
+        .prose h2 {
+          counter-reset: h3;
+        }
+
+        .prose h3 {
+          counter-reset: h4;
+        }
+
+        .prose h4 {
+          counter-reset: h5;
+        }
+
+        .prose h5 {
+          counter-reset: h6;
+        }
+
+        .prose h2::before {
+          counter-increment: h2;
+          content: counter(h2) ". ";
+        }
+
+        .prose h3::before {
+          counter-increment: h3;
+          content: counter(h2) "." counter(h3) ". ";
+        }
+
+        .prose h4::before {
+          counter-increment: h4;
+          content: counter(h2) "." counter(h3) "." counter(h4) ". ";
+        }
+
+        .prose h5::before {
+          counter-increment: h5;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". ";
+        }
+
+        .prose h6::before {
+          counter-increment: h6;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". ";
+        }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+
+    <!-- Header & Simple Navigation -->
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <a href="SchedExtSummary.html" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+                [Back]
+            </a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <!-- Blog Post Header -->
+        <article class="bg-card p-6 sm:p-10 rounded-xl border border-gray-200 shadow-lg">
+            <h1 class="text-3xl sm:text-4xl font-bold mb-4 text-text-dark">
+                Analyzing sched_ext Task Dequeue Logic in Linux Kernel
+            </h1>
+            <div class="text-text-muted mb-8">
+                <span>25/1/2026</span>
+                <span class="mx-2">|</span>
+                <span>Chunbo</span>
+            </div>
+
+            <!-- Blog Post Content -->
+            <div class="prose prose-lg max-w-none text-text-dark">
+                <h2 class="text-2xl font-bold mb-4 text-primary">Introduction</h2>
+                
+                <h2 class="text-2xl font-bold mb-4 text-primary">Key Function -- dequeue_task_scx</h2>
+                <p class="mb-6">
+                    The function dequeue_task_scx defines how task leaves the queue.
+In the first step, check if this task queued and dequeuing is called by mistake.
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>static bool dequeue_task_scx(struct rq *rq, struct task_struct *p, int deq_flags)
+{
+	struct scx_sched *sch = scx_root;
+
+	if (!(p->scx.flags & SCX_TASK_QUEUED)) {
+		WARN_ON_ONCE(task_runnable(p));
+		return true;
+	}</code></pre>
+                
+                <p class="mb-6">
+                    After making sure the dequeuing is reasonable:
+1. To use the SCX's dequeue functions, call ops_dequeue, which we will look into it later.
+
+2. Said by the comment, transitions between running and stopping should be 
+contained within the transitions between runnable and quiescent.
+Thus, by design, here the stopping process is triggered early, instead of 
+being triggered in put_prev_task_scx.
+As a result, here we call SCX's stopping and quiescent if it is defined.
+
+3. Also, between dequeue_task_scx and put_prev_task_scx, the transitions does not 
+contians meaningful information for SCX scheduler,
+ thus here we set p->scx.flags &= ~SCX_TASK_QUEUED
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>	ops_dequeue(rq, p, deq_flags);
+
+	/*
+	 * A currently running task which is going off @rq first gets dequeued
+	 * and then stops running. As we want running <-> stopping transitions
+	 * to be contained within runnable <-> quiescent transitions, trigger
+	 * ->stopping() early here instead of in put_prev_task_scx().
+	 *
+	 * @p may go through multiple stopping <-> running transitions between
+	 * here and put_prev_task_scx() if task attribute changes occur while
+	 * balance_one() leaves @rq unlocked. However, they don't contain any
+	 * information meaningful to the BPF scheduler and can be suppressed by
+	 * skipping the callbacks if the task is !QUEUED.
+	 */
+	if (SCX_HAS_OP(sch, stopping) && task_current(rq, p)) {
+		update_curr_scx(rq);
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, stopping, rq, p, false);
+	}
+
+	if (SCX_HAS_OP(sch, quiescent) && !task_on_rq_migrating(p))
+		SCX_CALL_OP_TASK(sch, SCX_KF_REST, quiescent, rq, p, deq_flags);
+
+	if (deq_flags & SCX_DEQ_SLEEP)
+		p->scx.flags |= SCX_TASK_DEQD_FOR_SLEEP;
+	else
+		p->scx.flags &= ~SCX_TASK_DEQD_FOR_SLEEP;
+
+	p->scx.flags &= ~SCX_TASK_QUEUED;
+	rq->scx.nr_running--;
+	sub_nr_running(rq, 1);
+
+	dispatch_dequeue(rq, p);
+	return true;
+}
+</code></pre>
+                
+                <h2 class="text-2xl font-bold mb-4 text-primary">Key Function -- ops_dequeue</h2>
+                <p class="mb-6">
+                    When task is dequeuing:
+1. Call clr_task_runnable with "false" parameter, which only performs
+list_del_init(&p->scx.runnable_node), but does not change the p->scx.flags.
+2. Choose different methods according to ops_state:
+a. SCX_OPSS_NONE: Do nothing.
+b. SCX_OPSS_QUEUEING: Dequeuing and Queuing are both holding the rq lock? It's a bug.
+c. SCX_OPSS_QUEUED: This task has already been put into the queue, so just call
+SCX's dequeue operation, and then fallthrough to SCX_OPSS_DISPATCHING.
+d. SCX_OPSS_DISPATCHING: Wait for the dispatching to be done, and check if the task's state
+becomes SCX_OPSS_NONE at last.
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>static void ops_dequeue(struct rq *rq, struct task_struct *p, u64 deq_flags)
+{
+	struct scx_sched *sch = scx_root;
+	unsigned long opss;
+
+	/* dequeue is always temporary, don't reset runnable_at */
+	clr_task_runnable(p, false);
+
+	/* acquire ensures that we see the preceding updates on QUEUED */
+	opss = atomic_long_read_acquire(&p->scx.ops_state);
+
+	switch (opss & SCX_OPSS_STATE_MASK) {
+	case SCX_OPSS_NONE:
+		break;
+	case SCX_OPSS_QUEUEING:
+		/*
+		 * QUEUEING is started and finished while holding @p's rq lock.
+		 * As we're holding the rq lock now, we shouldn't see QUEUEING.
+		 */
+		BUG();
+	case SCX_OPSS_QUEUED:
+		if (SCX_HAS_OP(sch, dequeue))
+			SCX_CALL_OP_TASK(sch, SCX_KF_REST, dequeue, rq,
+					 p, deq_flags);
+
+		if (atomic_long_try_cmpxchg(&p->scx.ops_state, &opss,
+					    SCX_OPSS_NONE))
+			break;
+		fallthrough;
+	case SCX_OPSS_DISPATCHING:
+		/*
+		 * If @p is being dispatched from the BPF scheduler to a DSQ,
+		 * wait for the transfer to complete so that @p doesn't get
+		 * added to its DSQ after dequeueing is complete.
+		 *
+		 * As we're waiting on DISPATCHING with the rq locked, the
+		 * dispatching side shouldn't try to lock the rq while
+		 * DISPATCHING is set. See dispatch_to_local_dsq().
+		 *
+		 * DISPATCHING shouldn't have qseq set and control can reach
+		 * here with NONE @opss from the above QUEUED case block.
+		 * Explicitly wait on %SCX_OPSS_DISPATCHING instead of @opss.
+		 */
+		wait_ops_state(p, SCX_OPSS_DISPATCHING);
+		BUG_ON(atomic_long_read(&p->scx.ops_state) != SCX_OPSS_NONE);
+		break;
+	}
+}
+</code></pre>
+                
+            </div>
+
+            <!-- Back to Blog List Button -->
+            <div class="mt-10">
+                <a href="SchedExtSummary.html" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to Summary
+                </a>
+            </div>
+        </article>
+    </main>
+
+    <!-- Footer (Minimalist) -->
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2026 Chunbo.</p>
+            <div class="mt-2 flex justify-center space-x-4">
+                    <a href="https://github.com/CCHUN7000" target="_blank" class="hover:text-primary transition duration-300">GitHub</a>
+                </div>
+        </div>
+    </footer>
+</body>
+</html>

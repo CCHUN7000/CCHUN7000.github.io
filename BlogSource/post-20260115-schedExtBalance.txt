@@ -1,0 +1,209 @@
+# Analyzing sched_ext Balance Logic in Linux Kernel
+
+Date: 15/1/2026
+Author: Chunbo
+
+## Introduction
+After exploring the logic of enqueuing process of sched_ext,
+let's move forward and take a look at how balance_scx works.
+
+```c
+balance_scx(rq, prev, rf)
+│
+├─ rq_unpin_lock(rq, rf)
+│
+├─ balance_one(rq, prev)                     // current CPU
+│
+├─ [if CONFIG_SCHED_SMT && sched_core_enabled(rq)]
+│   │
+│   └─ for each SMT sibling CPU (scpu ≠ current CPU)
+│       │
+│       ├─ srq = cpu_rq(scpu)
+│       ├─ sprev = srq->curr
+│       ├─ WARN_ON_ONCE(__rq_lockp(rq) != __rq_lockp(srq))
+│       ├─ update_rq_clock(srq)
+│       └─ balance_one(srq, sprev)           // SMT CPU
+│
+└─ rq_repin_lock(rq, rf)
+```
+
+##Main Functions
+### Main Entrance---(balance_scx)
+
+The beginning of load-balancing is balance_scx. It's very simple.
+Just call balance_one for current CPU, or for every CPU in smt_mask if SMT is enabled.
+
+```c
+static int balance_scx(struct rq *rq, struct task_struct *prev,
+		       struct rq_flags *rf)
+{
+	int ret;
+
+	rq_unpin_lock(rq, rf);
+
+	ret = balance_one(rq, prev);
+
+#ifdef CONFIG_SCHED_SMT
+	/*
+	 * When core-sched is enabled, this ops.balance() call will be followed
+	 * by pick_task_scx() on this CPU and the SMT siblings. Balance the
+	 * siblings too.
+	 */
+	if (sched_core_enabled(rq)) {
+		const struct cpumask *smt_mask = cpu_smt_mask(cpu_of(rq));
+		int scpu;
+
+		for_each_cpu_andnot(scpu, smt_mask, cpumask_of(cpu_of(rq))) {
+			struct rq *srq = cpu_rq(scpu);
+			struct task_struct *sprev = srq->curr;
+
+			WARN_ON_ONCE(__rq_lockp(rq) != __rq_lockp(srq));
+			update_rq_clock(srq);
+			balance_one(srq, sprev);
+		}
+	}
+#endif
+	rq_repin_lock(rq, rf);
+
+	return ret;
+}
+```
+
+### Move Forward---(balance_one)
+
+The first part of balance_one is initialization.
+```c
+static int balance_one(struct rq *rq, struct task_struct *prev)
+{
+	struct scx_sched *sch = scx_root;
+	struct scx_dsp_ctx *dspc = this_cpu_ptr(scx_dsp_ctx);
+	bool prev_on_scx = prev->sched_class == &ext_sched_class;
+	bool prev_on_rq = prev->scx.flags & SCX_TASK_QUEUED;
+	int nr_loops = SCX_DSP_MAX_LOOPS;
+
+	lockdep_assert_rq_held(rq);
+	rq->scx.flags |= SCX_RQ_IN_BALANCE;
+	rq->scx.flags &= ~(SCX_RQ_BAL_PENDING | SCX_RQ_BAL_KEEP);
+```
+Then, as the comment said, we deal with the scenarios that SCX gets
+the CPU again. For example, the previous task is a Real-Time type, and it 
+gives the CPU back to another SCX task.
+
+```c
+	if ((sch->ops.flags & SCX_OPS_HAS_CPU_PREEMPT) &&
+	    unlikely(rq->scx.cpu_released)) {
+		/*
+		 * If the previous sched_class for the current CPU was not SCX,
+		 * notify the BPF scheduler that it again has control of the
+		 * core. This callback complements ->cpu_release(), which is
+		 * emitted in switch_class().
+		 */
+		if (SCX_HAS_OP(sch, cpu_acquire))
+			SCX_CALL_OP(sch, SCX_KF_REST, cpu_acquire, rq,
+				    cpu_of(rq), NULL);
+		rq->scx.cpu_released = false;
+	}
+```
+Third, if prev task is a runnable task and still has slice, give it priority
+to keep running, so that some cost in changing tasks could be avoided.
+
+```c
+	if (prev_on_scx) {
+		update_curr_scx(rq);
+
+		/*
+		 * If @prev is runnable & has slice left, it has priority and
+		 * fetching more just increases latency for the fetched tasks.
+		 * Tell pick_task_scx() to keep running @prev. If the BPF
+		 * scheduler wants to handle this explicitly, it should
+		 * implement ->cpu_release().
+		 *
+		 * See scx_disable_workfn() for the explanation on the bypassing
+		 * test.
+		 */
+		if (prev_on_rq && prev->scx.slice && !scx_rq_bypassing(rq)) {
+			rq->scx.flags |= SCX_RQ_BAL_KEEP;
+			goto has_tasks;
+		}
+	}
+```
+Also, if there already exists tasks, we just pass the next balance loop.
+
+```c
+	/* if there already are tasks to run, nothing to do */
+	if (rq->scx.local_dsq.nr)
+		goto has_tasks;
+
+	if (consume_global_dsq(sch, rq))
+		goto has_tasks;
+
+```
+Without the above scenario, here we come to the loop of dispatching:
+Before the loop, if SCX's dispatch is not defined, we just pass this process.
+In the loop, SCX's dispatch is used to write the task into the target queue finally.
+
+```c
+	if (unlikely(!SCX_HAS_OP(sch, dispatch)) ||
+	    scx_rq_bypassing(rq) || !scx_rq_online(rq))
+		goto no_tasks;
+
+	dspc->rq = rq;
+
+	/*
+	 * The dispatch loop. Because flush_dispatch_buf() may drop the rq lock,
+	 * the local DSQ might still end up empty after a successful
+	 * ops.dispatch(). If the local DSQ is empty even after ops.dispatch()
+	 * produced some tasks, retry. The BPF scheduler may depend on this
+	 * looping behavior to simplify its implementation.
+	 */
+	do {
+		dspc->nr_tasks = 0;
+
+		SCX_CALL_OP(sch, SCX_KF_DISPATCH, dispatch, rq,
+			    cpu_of(rq), prev_on_scx ? prev : NULL);
+
+		flush_dispatch_buf(sch, rq);
+
+		if (prev_on_rq && prev->scx.slice) {
+			rq->scx.flags |= SCX_RQ_BAL_KEEP;
+			goto has_tasks;
+		}
+		if (rq->scx.local_dsq.nr)
+			goto has_tasks;
+		if (consume_global_dsq(sch, rq))
+			goto has_tasks;
+
+		/*
+		 * ops.dispatch() can trap us in this loop by repeatedly
+		 * dispatching ineligible tasks. Break out once in a while to
+		 * allow the watchdog to run. As IRQ can't be enabled in
+		 * balance(), we want to complete this scheduling cycle and then
+		 * start a new one. IOW, we want to call resched_curr() on the
+		 * next, most likely idle, task, not the current one. Use
+		 * scx_kick_cpu() for deferred kicking.
+		 */
+		if (unlikely(!--nr_loops)) {
+			scx_kick_cpu(sch, cpu_of(rq), 0);
+			break;
+		}
+	} while (dspc->nr_tasks);
+
+no_tasks:
+	/*
+	 * Didn't find another task to run. Keep running @prev unless
+	 * %SCX_OPS_ENQ_LAST is in effect.
+	 */
+	if (prev_on_rq &&
+	    (!(sch->ops.flags & SCX_OPS_ENQ_LAST) || scx_rq_bypassing(rq))) {
+		rq->scx.flags |= SCX_RQ_BAL_KEEP;
+		__scx_add_event(sch, SCX_EV_DISPATCH_KEEP_LAST, 1);
+		goto has_tasks;
+	}
+	rq->scx.flags &= ~SCX_RQ_IN_BALANCE;
+	return false;
+
+has_tasks:
+	rq->scx.flags &= ~SCX_RQ_IN_BALANCE;
+	return true;
+}
+```

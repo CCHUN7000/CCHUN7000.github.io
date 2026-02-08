@@ -120,7 +120,7 @@
                     <a href="#blog" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
                         Blog
                     </a>
-                    <a href="#visuals" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
+                    <a href="#story" class="bg-primary hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-300 shadow-lg">
                         More about Me
                     </a>
                 </div>
@@ -218,6 +218,32 @@
             <!-- Title size restored to text-3xl -->
             <h3 class="text-3xl font-bold mb-8 text-primary">Blog Posts</h3>
             <ul class="space-y-4">
+                <!-- SchedExt Code Analysis Summary -->
+                <!-- 深度强化版：SchedExt Code Analysis Summary -->
+                <!-- 增加了 p-8 让整个条目显得更宽大，增加了 border-l-4 突出侧边 -->
+                <li class="bg-card p-8 rounded-2xl border-2 border-gray-200 border-l-primary shadow-xl hover:shadow-2xl transition-all duration-300">
+                    <a href="Blog/SchedExtCodeAnalysis/SchedExtSummary.html" class="flex flex-col md:flex-row items-start md:items-center gap-6 group block">
+                        <!-- 核心词框：显著加大了尺寸，使用了更粗的字体和阴影 -->
+                        <span class="shrink-0 px-6 py-2 bg-primary text-white text-sm font-black uppercase tracking-widest rounded-lg shadow-md">
+                            Kernel
+                        </span>
+                        
+                        <div class="flex-1">
+                            <!-- 调大了标题字号 text-xl -->
+                            <div class="text-xl font-bold text-text-dark group-hover:text-primary transition-colors duration-200 leading-tight">
+                                sched_ext Code Analysis Summary
+                                <div class="text-sm text-text-muted mt-1 font-normal italic">Published in 2026</div>
+                            </div>
+                        </div>
+                        
+                        <!-- 右侧装饰图标 (可选) -->
+                        <div class="hidden md:block text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                            </svg>
+                        </div>
+                    </a>
+                </li>
                 <!-- Blog Post 5 - Added new post -->
                 <li class="bg-card p-4 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
                     <a href="Blog/post-5.html" class="text-lg font-semibold text-text-dark hover:text-primary block">
@@ -247,6 +273,26 @@
                     </a>
                 </li>
             </ul>
+        </section>
+
+        <!-- 6. My Story Section -->
+        <section id="story" class="py-10">
+            <h3 class="text-3xl font-bold mb-8 text-primary">My Story</h3>
+            <div class="bg-card p-8 rounded-xl border border-gray-200 shadow-lg">
+                <p class="text-text-dark leading-relaxed mb-4">
+                    Working as a software engineer, I like implementing some interesting features on real Android system.
+                    When I was a Bachelor student, I did not know why system is interesting.
+                    But it's different now because I can see it running in real.
+                </p>
+                <p class="text-text-dark leading-relaxed mb-4">
+                    Also, I am now reading papers to learn some new techniques.
+                    It would be meaningful if the impact of the research shows on real devices.
+                </p>
+                <p class="text-text-dark leading-relaxed">
+                    Thus, I'm now conducting more interesting programs, deploying them on QEMU or VirtualBox, 
+                    and profiling the system. Also, I'm learning more papers and kernel knowledge, and wrting those things into blogs.
+                </p>
+            </div>
         </section>
 
         <!-- 5. Visuals/Gallery Section (MODIFIED to a single viewer with arrows) -->

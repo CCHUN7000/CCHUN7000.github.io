@@ -85,7 +85,7 @@
     <!-- Header & Simple Navigation -->
     <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <a href="../index.html#blog" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+            <a href="SchedExtSummary.html" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
                 [Back]
             </a>
             <nav class="space-x-6">
@@ -129,7 +129,7 @@
                 <h4 class="text-lg font-bold mb-3 text-text-dark">Take a look at the comment first!</h4>
                 <p class="mb-4">
                     The author provides us the comment, showing that the full-idle CPU is the most popular one (for SMT),
-                    or we want to reuse the smae CPU(prev_cpu is cache-friendly), or we choose other guys.
+                    or we want to reuse the same CPU(prev_cpu is cache-friendly), or we choose other guys.
                 </p>
                 <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>/*
  * Built-in CPU idle selection policy:
@@ -238,7 +238,7 @@
 
                 <h4 class="text-lg font-bold mb-3 text-text-dark">WAKE_SYNC? What it is?</h4>
                 <p class="mb-4">
-                    Sometimes, the task has a "parent" (or "partner"?), who wake this task up (Makes me think of Shi Su and Huaimin Zhang).
+                    Sometimes, the task has a "parent" (or "partner"?), who wake this task up.
                     As the waker is on "smp_processor_id":
                     If task's prev_cpu and waker's CPU share cache, and prev_cpu is empty, then no need to move
                     If the waker's CPU queue is empty, the task is welcome!
@@ -398,14 +398,39 @@ out_enable:
 }</code></pre>
 
                 <h3 class="text-xl font-bold mb-3 text-primary">One Question: What if we can not find an idle one?</h3>
-                <h4 class="text-lg font-bold mb-3 text-text-dark">Further code analysis</h4>
+                <h4 class="text-lg font-bold mb-3 text-text-dark">Go back to scx_bpf_select_cpu_dfl</h4>
+                <p class="mb-4">
+                    If the previous code can not find an idle CPU, we just choose the prev_cpu after we go back to 
+                    scx_bpf_select_cpu_dfl
+                </p>
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>__bpf_kfunc s32 scx_bpf_select_cpu_dfl(struct task_struct *p, s32 prev_cpu,
+				       u64 wake_flags, bool *is_idle)
+{
+	struct scx_sched *sch;
+	s32 cpu;
+
+	guard(rcu)();
+
+	sch = rcu_dereference(scx_root);
+	if (unlikely(!sch))
+		return -ENODEV;
+
+	cpu = select_cpu_from_kfunc(sch, p, prev_cpu, wake_flags, NULL, 0);
+	if (cpu >= 0) {
+		*is_idle = true;
+		return cpu;
+	}
+	*is_idle = false;
+	return prev_cpu;
+}
+</code></pre>
             </div>
 
             <!-- Back to Blog List Button -->
             <div class="mt-10">
-                <a href="../index.html#blog" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
+                <a href="SchedExtSummary.html" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                    Back to Blog List
+                    Back to Summary
                 </a>
             </div>
         </article>

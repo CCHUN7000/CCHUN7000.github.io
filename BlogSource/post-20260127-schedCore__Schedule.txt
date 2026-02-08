@@ -1,0 +1,197 @@
+# Analyzing __Schedule Logic in Core.c of Linux Kernel
+
+Date: 27/1/2026
+Author: Chunbo
+
+## Introduction
+Core.c defines the basic functions of scheduling, and __Schedule() performs the 
+controller role in the tasks changes. In this blog, we analyze the logic of 
+__Schedule(), and obtain the insight in scheduling.
+
+## Key Function -- __schedule
+In the beginning, __schedule obtains the context such as cpu, rq, and prev (task),
+as well as the scheduling time.
+
+```c
+static void __sched notrace __schedule(int sched_mode)
+{
+	struct task_struct *prev, *next;
+	/*
+	 * On PREEMPT_RT kernel, SM_RTLOCK_WAIT is noted
+	 * as a preemption by schedule_debug() and RCU.
+	 */
+	bool preempt = sched_mode > SM_NONE;
+	bool is_switch = false;
+	unsigned long *switch_count;
+	unsigned long prev_state;
+	struct rq_flags rf;
+	struct rq *rq;
+	int cpu;
+
+	/* Trace preemptions consistently with task switches */
+	trace_sched_entry_tp(sched_mode == SM_PREEMPT);
+
+	cpu = smp_processor_id();
+	rq = cpu_rq(cpu);
+	prev = rq->curr;
+
+	schedule_debug(prev, preempt);
+
+	if (sched_feat(HRTICK) || sched_feat(HRTICK_DL))
+		hrtick_clear(rq);
+
+	klp_sched_try_switch(prev);
+
+	local_irq_disable();
+	rcu_note_context_switch(preempt);
+	migrate_disable_switch(rq, prev);
+```
+The second step is the first important logic: Previous task is not preempted.
+Let's ignore the rq's lock and membarrier temporarily.
+Notive that "preempt = sched_mode == SM_PREEMPT",
+if "sched_mode == SM_IDLE", which means "schedule_idle(void)" calls 
+"__schedule(SM_IDLE)", and here we can just pick "prev" as next.
+Otherwise, "(!preempt && prev_state)" means that task becomes sleeping state (Interruptible or Uninterruptible),
+thus we call try_to_block_task and set "switch_count = &prev->nvcsw".
+
+```c
+	/*
+	 * Make sure that signal_pending_state()->signal_pending() below
+	 * can't be reordered with __set_current_state(TASK_INTERRUPTIBLE)
+	 * done by the caller to avoid the race with signal_wake_up():
+	 *
+	 * __set_current_state(@state)		signal_wake_up()
+	 * schedule()				  set_tsk_thread_flag(p, TIF_SIGPENDING)
+	 *					  wake_up_state(p, state)
+	 *   LOCK rq->lock			    LOCK p->pi_state
+	 *   smp_mb__after_spinlock()		    smp_mb__after_spinlock()
+	 *     if (signal_pending_state())	    if (p->state & @state)
+	 *
+	 * Also, the membarrier system call requires a full memory barrier
+	 * after coming from user-space, before storing to rq->curr; this
+	 * barrier matches a full barrier in the proximity of the membarrier
+	 * system call exit.
+	 */
+	rq_lock(rq, &rf);
+	smp_mb__after_spinlock();
+
+	/* Promote REQ to ACT */
+	rq->clock_update_flags <<= 1;
+	update_rq_clock(rq);
+	rq->clock_update_flags = RQCF_UPDATED;
+
+	switch_count = &prev->nivcsw;
+
+	/* Task state changes only considers SM_PREEMPT as preemption */
+	preempt = sched_mode == SM_PREEMPT;
+
+	/*
+	 * We must load prev->state once (task_struct::state is volatile), such
+	 * that we form a control dependency vs deactivate_task() below.
+	 */
+	prev_state = READ_ONCE(prev->__state);
+	if (sched_mode == SM_IDLE) {
+		/* SCX must consult the BPF scheduler to tell if rq is empty */
+		if (!rq->nr_running && !scx_enabled()) {
+			next = prev;
+			goto picked;
+		}
+	} else if (!preempt && prev_state) {
+		/*
+		 * We pass task_is_blocked() as the should_block arg
+		 * in order to keep mutex-blocked tasks on the runqueue
+		 * for slection with proxy-exec (without proxy-exec
+		 * task_is_blocked() will always be false).
+		 */
+		try_to_block_task(rq, prev, &prev_state,
+				  !task_is_blocked(prev));
+		switch_count = &prev->nvcsw;
+	}
+```
+
+The third step is the core logic: Trying to keep picking until the next task is selected.
+1. In "pick_again" stage, select the next task by "pick_next_task", also 
+set next as the dornor ("rq_set_donor(rq, next)") for "!next" scenario, 
+so that we can skip this "next" and find other "next".
+If unlikely this "next" is still blocked, then find its proxy by "next = find_proxy_task(rq, next, &rf)".
+Furthermore, if we can not find the proxy, go back to "pick_again", 
+or if next task is rq->idle, goto keep_resched straightly.
+
+2. In "picked" stage, "clear_tsk_need_resched()" will clear the sign of _TIF_NEED_RESCHED | _TIF_NEED_RESCHED_LAZY, 
+and "clear_preempt_need_resched" will clear the sign of need_resched according to different architecture.
+
+3. In "keep_resched" stage, 
+
+```c
+pick_again:
+	next = pick_next_task(rq, rq->donor, &rf);
+	rq_set_donor(rq, next);
+	if (unlikely(task_is_blocked(next))) {
+		next = find_proxy_task(rq, next, &rf);
+		if (!next)
+			goto pick_again;
+		if (next == rq->idle)
+			goto keep_resched;
+	}
+picked:
+	clear_tsk_need_resched(prev);
+	clear_preempt_need_resched();
+keep_resched:
+	rq->last_seen_need_resched_ns = 0;
+
+	is_switch = prev != next;
+	if (likely(is_switch)) {
+		rq->nr_switches++;
+		/*
+		 * RCU users of rcu_dereference(rq->curr) may not see
+		 * changes to task_struct made by pick_next_task().
+		 */
+		RCU_INIT_POINTER(rq->curr, next);
+
+		if (!task_current_donor(rq, next))
+			proxy_tag_curr(rq, next);
+
+		/*
+		 * The membarrier system call requires each architecture
+		 * to have a full memory barrier after updating
+		 * rq->curr, before returning to user-space.
+		 *
+		 * Here are the schemes providing that barrier on the
+		 * various architectures:
+		 * - mm ? switch_mm() : mmdrop() for x86, s390, sparc, PowerPC,
+		 *   RISC-V.  switch_mm() relies on membarrier_arch_switch_mm()
+		 *   on PowerPC and on RISC-V.
+		 * - finish_lock_switch() for weakly-ordered
+		 *   architectures where spin_unlock is a full barrier,
+		 * - switch_to() for arm64 (weakly-ordered, spin_unlock
+		 *   is a RELEASE barrier),
+		 *
+		 * The barrier matches a full barrier in the proximity of
+		 * the membarrier system call entry.
+		 *
+		 * On RISC-V, this barrier pairing is also needed for the
+		 * SYNC_CORE command when switching between processes, cf.
+		 * the inline comments in membarrier_arch_switch_mm().
+		 */
+		++*switch_count;
+
+		psi_account_irqtime(rq, prev, next);
+		psi_sched_switch(prev, next, !task_on_rq_queued(prev) ||
+					     prev->se.sched_delayed);
+
+		trace_sched_switch(preempt, prev, next, prev_state);
+
+		/* Also unlocks the rq: */
+		rq = context_switch(rq, prev, next, &rf);
+	} else {
+		/* In case next was already curr but just got blocked_donor */
+		if (!task_current_donor(rq, next))
+			proxy_tag_curr(rq, next);
+
+		rq_unpin_lock(rq, &rf);
+		__balance_callbacks(rq);
+		raw_spin_rq_unlock_irq(rq);
+	}
+	trace_sched_exit_tp(is_switch);
+}
+```

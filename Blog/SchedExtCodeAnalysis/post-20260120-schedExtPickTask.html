@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyzing sched_ext Pick Task Logic in Linux Kernel</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind for a nice font and a light mode theme -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    // Light color palette: Blue and various shades of white/gray
+                    colors: {
+                        'primary': '#3B82F6', // Blue accent
+                        'card': '#FFFFFF', // White card background
+                        'background': '#F9FAFB', // Very light gray background
+                        'text-dark': '#1F2937', // Dark gray/black for main text
+                        'text-muted': '#6B7280', // Medium gray for secondary text
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Apply smooth scrolling */
+        html { scroll-behavior: smooth; }
+        
+        /* 标题自动编号 */
+        .prose {
+          counter-reset: h2;
+        }
+
+        .prose h2 {
+          counter-reset: h3;
+        }
+
+        .prose h3 {
+          counter-reset: h4;
+        }
+
+        .prose h4 {
+          counter-reset: h5;
+        }
+
+        .prose h5 {
+          counter-reset: h6;
+        }
+
+        .prose h2::before {
+          counter-increment: h2;
+          content: counter(h2) ". ";
+        }
+
+        .prose h3::before {
+          counter-increment: h3;
+          content: counter(h2) "." counter(h3) ". ";
+        }
+
+        .prose h4::before {
+          counter-increment: h4;
+          content: counter(h2) "." counter(h3) "." counter(h4) ". ";
+        }
+
+        .prose h5::before {
+          counter-increment: h5;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) ". ";
+        }
+
+        .prose h6::before {
+          counter-increment: h6;
+          content: counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". ";
+        }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+
+    <!-- Header & Simple Navigation -->
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <a href="SchedExtSummary.html" class="text-xl font-bold text-primary hover:text-blue-700 transition duration-300">
+                [Back]
+            </a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 transition duration-300 font-medium">
+                    GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <!-- Blog Post Header -->
+        <article class="bg-card p-6 sm:p-10 rounded-xl border border-gray-200 shadow-lg">
+            <h1 class="text-3xl sm:text-4xl font-bold mb-4 text-text-dark">
+                Analyzing sched_ext Pick Task Logic in Linux Kernel
+            </h1>
+            <div class="text-text-muted mb-8">
+                <span>20/1/2026</span>
+                <span class="mx-2">|</span>
+                <span>Chunbo</span>
+            </div>
+
+            <!-- Blog Post Content -->
+            <div class="prose prose-lg max-w-none text-text-dark">
+                <h2 class="text-2xl font-bold mb-4 text-primary">Introduction</h2>
+                
+                <h2 class="text-2xl font-bold mb-4 text-primary">Key Function -- start from pick_task_scx in 6.17.9</h2>
+                <p class="mb-6">
+                    Init: In the initialization part, note that the "keep_prev" is related to SCX_RQ_BAL_KEEP.
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>static struct task_struct *pick_task_scx(struct rq *rq)
+{
+	struct task_struct *prev = rq->curr;
+	struct task_struct *p;
+	bool keep_prev = rq->scx.flags & SCX_RQ_BAL_KEEP;
+	bool kick_idle = false;</code></pre>
+                
+                <p class="mb-6">
+                    Then we comes to WORKAROUND path.
+As the comment said, the "fair" may go through balance() without balance_scx(),
+and call pick_task_scx(). Thus, we need a workaround method:
+1. When SCX_RQ_BAL_PENDING is set, representing that a balance is not processed,
+we keep the previous task if it's queued. Otherwise, we kick_idle, so that
+the CPU could join the scheduling process later, 
+by calling scx_kick_cpu(rcu_dereference_sched(scx_root), cpu_of(rq), SCX_KICK_IDLE) 
+in the following part.
+
+2. When keep_prev is true, however the previous guy is not SCX task,
+set keep_prev to false in case it is treated as a SCX task.
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>	/*
+	 * WORKAROUND:
+	 *
+	 * %SCX_RQ_BAL_KEEP should be set iff $prev is on SCX as it must just
+	 * have gone through balance_scx(). Unfortunately, there currently is a
+	 * bug where fair could say yes on balance() but no on pick_task(),
+	 * which then ends up calling pick_task_scx() without preceding
+	 * balance_scx().
+	 *
+	 * Keep running @prev if possible and avoid stalling from entering idle
+	 * without balancing.
+	 *
+	 * Once fair is fixed, remove the workaround and trigger WARN_ON_ONCE()
+	 * if pick_task_scx() is called without preceding balance_scx().
+	 */
+	if (unlikely(rq->scx.flags & SCX_RQ_BAL_PENDING)) {
+		if (prev->scx.flags & SCX_TASK_QUEUED) {
+			keep_prev = true;
+		} else {
+			keep_prev = false;
+			kick_idle = true;
+		}
+	} else if (unlikely(keep_prev &&
+			    prev->sched_class != &ext_sched_class)) {
+		/*
+		 * Can happen while enabling as SCX_RQ_BAL_PENDING assertion is
+		 * conditional on scx_enable_state() == SCX_ENABLED and may have been skipped.
+		 */
+		WARN_ON_ONCE(scx_enable_state() == SCX_ENABLED);
+		keep_prev = false;
+	}</code></pre>
+                
+                <p class="mb-6">
+                    The following part is the core logic of picking task:
+1. If the balancing process decides to keep the previous task,
+refill the slice of the previous task.
+2. If not, we get the new task from the rq. Most likely, we got the task we want,
+but if we can not get the task, the CPU becomes idle, 
+or if this task does not have time slice, refill it.
+                </p>
+                
+                <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto mb-6"><code>	/*
+	 * If balance_scx() is telling us to keep running @prev, replenish slice
+	 * if necessary and keep running @prev. Otherwise, pop the first one
+	 * from the local DSQ.
+	 */
+	if (keep_prev) {
+		p = prev;
+		if (!p->scx.slice)
+			refill_task_slice_dfl(rcu_dereference_sched(scx_root), p);
+	} else {
+		p = first_local_task(rq);
+		if (!p) {
+			if (kick_idle)
+				scx_kick_cpu(rcu_dereference_sched(scx_root),
+					     cpu_of(rq), SCX_KICK_IDLE);
+			return NULL;
+		}
+
+		if (unlikely(!p->scx.slice)) {
+			struct scx_sched *sch = rcu_dereference_sched(scx_root);
+
+			if (!scx_rq_bypassing(rq) && !sch->warned_zero_slice) {
+				printk_deferred(KERN_WARNING "sched_ext: %s[%d] has zero slice in %s()\n",
+						p->comm, p->pid, __func__);
+				sch->warned_zero_slice = true;
+			}
+			refill_task_slice_dfl(sch, p);
+		}
+	}
+
+	return p;
+}</code></pre>
+                
+                <h2 class="text-2xl font-bold mb-4 text-primary">Key Function -- move to pick_task_scx in 6.19-rc5</h2>
+                
+            </div>
+
+            <!-- Back to Blog List Button -->
+            <div class="mt-10">
+                <a href="SchedExtSummary.html" class="inline-flex items-center px-6 py-3 bg-primary hover:bg-blue-600 text-white font-semibold rounded-lg transition duration-300 shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to Summary
+                </a>
+            </div>
+        </article>
+    </main>
+
+    <!-- Footer (Minimalist) -->
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2026 Chunbo.</p>
+            <div class="mt-2 flex justify-center space-x-4">
+                    <a href="https://github.com/CCHUN7000" target="_blank" class="hover:text-primary transition duration-300">GitHub</a>
+                </div>
+        </div>
+    </footer>
+</body>
+</html>

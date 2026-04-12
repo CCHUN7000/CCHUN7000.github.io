@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinuxTracker - Linux Kernel Patch Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-10">
+        <!-- Project Header -->
+        <section>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">LinuxTracker</h1>
+            <p class="text-lg text-text-muted mb-6">Cross-source Linux kernel patch analysis toolkit with zero external dependencies</p>
+            <div class="flex flex-wrap gap-3">
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Python</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Linux Kernel</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">LKML</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Patchwork</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Academic Papers</span>
+            </div>
+        </section>
+
+        <!-- Overview -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Overview</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <p class="text-text-muted mb-4">
+                    LinuxTracker analyzes Linux kernel subsystem evolution by correlating commits, mailing list discussions,
+                    patch status, and academic papers. Built with <strong>zero pip dependencies</strong> — uses only Python standard library.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div class="p-4 bg-green-50 rounded-lg">
+                        <p class="text-2xl font-bold text-green-600">5</p>
+                        <p class="text-sm text-text-muted">Data Sources</p>
+                    </div>
+                    <div class="p-4 bg-blue-50 rounded-lg">
+                        <p class="text-2xl font-bold text-blue-600">6-Stage</p>
+                        <p class="text-sm text-text-muted">Analysis Pipeline</p>
+                    </div>
+                    <div class="p-4 bg-purple-50 rounded-lg">
+                        <p class="text-2xl font-bold text-purple-600">0</p>
+                        <p class="text-sm text-text-muted">External Dependencies</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Architecture</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre class="text-sm"><code>┌─────────────────────────────────────────────────────────────────────┐
+│                        LinuxTracker Pipeline                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  Stage 1: Commit Discovery                                           │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ kernel_history.py - Local git history, blame, diffstat        │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                              ↓                                      │
+│  Stage 2: Keyword Extraction                                        │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ Tokenize subjects, classify commit types (bugfix/feature/etc) │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                              ↓                                      │
+│  Stage 3-5: Multi-Source Search                                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
+│  │ lkml_fetch  │  │patchwork_    │  │ systems_    │               │
+│  │ lore.kernel │  │fetch         │  │ fetch       │               │
+│  │             │  │patchwork.    │  │ DBLP/arXiv  │               │
+│  │             │  │kernel.org     │  │             │               │
+│  └─────────────┘  └─────────────┘  └─────────────┘               │
+│                              ↓                                      │
+│  Stage 6: Cross-Reference & Report                                  │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │ Jaccard similarity matching, Markdown report generation       │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘</code></pre>
+            </div>
+        </section>
+
+        <!-- Core Tools -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Core Tools</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">kernel_history.py</h3>
+                    <p class="text-sm text-text-muted mb-2">Local git history queries</p>
+                    <ul class="text-xs text-text-muted space-y-1">
+                        <li><code>log</code> — Query commit history</li>
+                        <li><code>blame</code> — Line-level attribution</li>
+                        <li><code>subsystem-info</code> — Maintainer lookup</li>
+                        <li><code>diffstat</code> — Version diff statistics</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">lkml_fetch.py</h3>
+                    <p class="text-sm text-text-muted mb-2">LKML mailing list search</p>
+                    <ul class="text-xs text-text-muted space-y-1">
+                        <li><code>search</code> — Search via lore.kernel.org</li>
+                        <li><code>thread</code> — Get email thread</li>
+                        <li><code>rfc</code> — List RFC proposals</li>
+                        <li>Rate limiting + retry logic</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">patchwork_fetch.py</h3>
+                    <p class="text-sm text-text-muted mb-2">Patchwork patch status</p>
+                    <ul class="text-xs text-text-muted space-y-1">
+                        <li><code>search</code> — Search patches</li>
+                        <li><code>series</code> — Patch series tracking</li>
+                        <li>REST API via patchwork.kernel.org</li>
+                        <li>State tracking (accepted/rejected)</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">systems_fetch.py</h3>
+                    <p class="text-sm text-text-muted mb-2">Academic paper retrieval</p>
+                    <ul class="text-xs text-text-muted space-y-1">
+                        <li><code>search</code> — Multi-source (DBLP → arXiv)</li>
+                        <li><code>arxiv</code> — Direct arXiv search</li>
+                        <li><code>fetch-usenix</code> — USENIX papers</li>
+                        <li>Fallback chain for reliability</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Key Algorithms -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Algorithms</h2>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg mb-6">
+                <h3 class="font-semibold text-primary mb-3">Commit Classification</h3>
+                <pre><code>def classify_commit(commit_msg: str) -> Dict[str, Any]:
+    """Classify commit type by keywords in message"""
+    msg_lower = commit_msg.lower()
+    commit_type = {
+        'feature': any(k in msg_lower for k in ['feature', 'add', 'implement', 'new']),
+        'bugfix': any(k in msg_lower for k in ['fix', 'bug', 'repair', 'correct']),
+        'refactor': any(k in msg_lower for k in ['refactor', 'clean', 'simplify', 'improve']),
+        'performance': any(k in msg_lower for k in ['perf', 'optimize', 'speed', 'efficient']),
+        'api': any(k in msg_lower for k in ['api', 'syscall', 'interface']),
+        'documentation': any(k in msg_lower for k in ['doc', 'comment', 'readme']),
+    }
+    return {'type': commit_type, 'raw': commit_msg}</code></pre>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <h3 class="font-semibold text-primary mb-3">Cross-Reference (Jaccard Similarity)</h3>
+                <pre><code>def jaccard_similarity(set1: Set[str], set2: Set[str]) -> float:
+    """Calculate Jaccard similarity between two token sets"""
+    if not set1 or not set2:
+        return 0.0
+    intersection = len(set1 & set2)
+    union = len(set1 | set2)
+    return intersection / union if union > 0 else 0.0
+
+def cross_reference(commits, lkml_results, ...):
+    """Link commits to LKML discussions using Jaccard similarity"""
+    commit_subjects = {c.hash: tokenize(c.subject) for c in commits}
+
+    for lkml in lkml_results:
+        lkml_tokens = tokenize(lkml.subject)
+        best_score = 0.0
+        for commit_hash, commit_tokens in commit_subjects.items():
+            score = jaccard_similarity(lkml_tokens, commit_tokens)
+            if score > best_score and score >= 0.3:
+                best_match = commit_hash
+                best_score = score</code></pre>
+            </div>
+        </section>
+
+        <!-- 6-Stage Pipeline -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">6-Stage Pipeline</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <div class="space-y-4">
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0">1</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">Commit Discovery</h4>
+                            <p class="text-sm text-text-muted">Query local kernel git repository for subsystem commits</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0">2</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">Keyword Extraction</h4>
+                            <p class="text-sm text-text-muted">Tokenize subjects, classify commit types, identify subsystems</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0">3</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">LKML Search</h4>
+                            <p class="text-sm text-text-muted">Search lore.kernel.org for related email discussions</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-bold flex-shrink-0">4</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">Patchwork Search</h4>
+                            <p class="text-sm text-text-muted">Query patchwork.kernel.org for patch status and series</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0">5</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">Paper Search</h4>
+                            <p class="text-sm text-text-muted">Search DBLP/arXiv for related academic publications</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                        <span class="bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold flex-shrink-0">6</span>
+                        <div>
+                            <h4 class="font-semibold text-text-dark">Report Generation</h4>
+                            <p class="text-sm text-text-muted">Cross-reference all sources, generate Markdown report</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Usage Examples -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Usage Examples</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg mb-6">
+                <h3 class="font-semibold text-primary mb-3">Quick Summary (Offline)</h3>
+                <pre><code># Analyze scheduler commits between versions
+python -m tools.patch_analyzer summary \
+    --path /path/to/linux \
+    --subsystem kernel/sched/ \
+    --from v6.1 \
+    --to v6.8 \
+    --max 50
+
+# Output: JSON with commit list and metadata
+{
+  "subsystem": "kernel/sched/",
+  "from": "v6.1",
+  "to": "v6.8",
+  "commits": [...],
+  "meta": {
+    "keywords": ["sched", "entity", "pick", "next", ...],
+    "commit_count": 1234
+  }
+}</code></pre>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <h3 class="font-semibold text-primary mb-3">Full Analysis (With Network)</h3>
+                <pre><code># Full analysis with LKML, Patchwork, and papers
+python -m tools.patch_analyzer analyze \
+    --path /path/to/linux \
+    --subsystem kernel/sched/ \
+    --from v6.1 \
+    --to v6.8 \
+    --max 20
+
+# Output: Markdown report saved to AnalysisDocument/
+# Report includes:
+# - Commit history
+# - LKML discussions linked via Jaccard similarity
+# - Patchwork patch states
+# - Related academic papers</code></pre>
+            </div>
+        </section>
+
+        <!-- Report Output -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Report Output</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre><code># sched_v6.1_to_v6.8_analysis.md
+
+## Summary
+- Total Commits: 1,234
+- LKML Links: 23
+- Patchwork Patches: 8
+- Related Papers: 3
+
+## Commit History
+- **abc1234** sched: Add EEVDF scheduler
+- **def5678** sched: Optimize pick_next_entity
+- **ghi9012** sched: Fix rq->clock_update flags
+
+## LKML Discussions
+- [sched: Add EEVDF scheduler](https://lore.kernel.org/lkml/...) (commit abc1234)
+- [RFC: Scheduler improvements for 6.8](https://lore.kernel.org/lkml/...) (commit def5678)
+
+## Patchwork Status
+- [sched: EEVDF v3](https://patchwork.kernel.org/patch/12345/) - Accepted
+- [sched: entity pick fix](https://patchwork.kernel.org/patch/12346/) - Under review
+
+## Related Papers
+- [Linux Kernel Scheduling: Past, Present, Future](https://arxiv.org/...)
+- [Energy-Efficient Scheduling in Data Centers](https://dblp.org/...)</code></pre>
+            </div>
+        </section>
+
+        <!-- Environment Variables -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Environment Variables</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2">Variable</th>
+                            <th class="text-left py-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-text-muted">
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>KERNEL_SRC</code></td><td>Local kernel git repository path</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>SKIP_NETWORK</code></td><td>Skip network tests (for offline testing)</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Erlang B & Erlang C - Queueing Theory Fundamentals</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        .formula-box {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 1.25rem;
+            border-radius: 0.5rem;
+            font-family: 'Consolas', 'Monaco', monospace;
+            overflow-x: auto;
+            line-height: 1.8;
+        }
+        .formula-box .comment { color: #94a3b8; }
+        .formula-box .highlight { color: #fbbf24; }
+        .param { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: monospace; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        <section>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-primary text-white text-sm font-bold px-3 py-1 rounded">Queueing Theory</span>
+                <span class="text-text-muted text-sm">2026-04-12</span>
+            </div>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">Erlang B & Erlang C</h1>
+            <p class="text-lg text-text-muted">Foundation of queueing theory: blocking probability, waiting time, and capacity planning.</p>
+        </section>
+
+        <!-- System Classification -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">M/M/c System Classification</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="p-5 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                    <h3 class="font-semibold text-blue-700 mb-2">Erlang C — Waiting System</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>All arrivals wait until served</li>
+                        <li>Infinite queue capacity</li>
+                        <li>New customer never rejected</li>
+                        <li>Calculates: <strong>waiting probability</strong></li>
+                    </ul>
+                    <p class="text-xs text-text-muted mt-3 italic">Use: CPU scheduling, bank queues</p>
+                </div>
+                <div class="p-5 bg-red-50 rounded-lg border-l-4 border-red-500">
+                    <h3 class="font-semibold text-red-700 mb-2">Erlang B — Loss System</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>Arrivals blocked when all servers busy</li>
+                        <li>Queue capacity = 0</li>
+                        <li>New customer immediately rejected</li>
+                        <li>Calculates: <strong>blocking probability</strong></li>
+                    </ul>
+                    <p class="text-xs text-text-muted mt-3 italic">Use: phone lines, connection pools</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Parameters -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Parameters</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                <div><span class="param">c</span> = number of servers</div>
+                <div><span class="param">λ</span> = arrival rate (tasks/sec)</div>
+                <div><span class="param">μ</span> = service rate (tasks/sec per server)</div>
+                <div><span class="param">ρ</span> = λ/(c·μ) = utilization</div>
+                <div><span class="param">1/μ</span> = avg service time</div>
+                <div><span class="param">A</span> = λ/μ = traffic intensity (Erlangs)</div>
+            </div>
+            <p class="text-xs text-text-muted mt-4">Note: ρ must be < 1 for system stability (Erlang C)</p>
+        </section>
+
+        <!-- Erlang C -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Erlang C — Waiting Probability</h2>
+            <p class="text-text-muted mb-4">Probability that an arriving customer must wait (all servers busy):</p>
+
+            <div class="formula-box mb-4">
+                <span class="highlight">ErlangC(c, ρ)</span> = <span class="comment">(cρ)^c / c!</span> / <span class="comment">(cρ)^c / c! + (1-ρ) · Σ(n=0 to c-1) (cρ)^n / n!</span>
+            </div>
+
+            <div class="formula-box mb-4">
+                <span class="comment">// Recursive form (numerically stable)</span><br>
+                C(c, ρ) = (c·ρ) / (c - ρ·(1 - C(c-1, ρ)))<br>
+                C(1, ρ) = ρ
+            </div>
+        </section>
+
+        <!-- Erlang C - Wait Time -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Erlang C — Wait Time</h2>
+
+            <div class="space-y-4">
+                <div class="formula-box">
+                    <span class="highlight">Wq</span> = ErlangC(c, ρ) / (c · μ · (1 - ρ))<br>
+                    <span class="comment">// Average wait time in queue</span>
+                </div>
+
+                <div class="formula-box">
+                    <span class="highlight">W</span> = Wq + 1/μ<br>
+                    <span class="comment">// Average time in system</span>
+                </div>
+
+                <div class="formula-box">
+                    <span class="highlight">Lq</span> = λ · Wq<br>
+                    <span class="comment">// Average number in queue</span>
+                </div>
+
+                <div class="formula-box">
+                    <span class="highlight">L</span> = λ · W<br>
+                    <span class="comment">// Average number in system</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Erlang B -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Erlang B — Blocking Probability</h2>
+            <p class="text-text-muted mb-4">Probability that all c servers are busy (customer is blocked):</p>
+
+            <div class="formula-box mb-4">
+                <span class="highlight">ErlangB(c, ρ)</span> = <span class="comment">(cρ)^c / c!</span> / <span class="comment">Σ(n=0 to c) (cρ)^n / n!</span>
+            </div>
+
+            <div class="formula-box">
+                <span class="comment">// Recursive form (recommended for computation)</span><br>
+                B(c, ρ) = ρ / (ρ + (c - ρ) · B(c-1, ρ))<br>
+                B(0, ρ) = 1
+            </div>
+        </section>
+
+        <!-- Erlang B - Throughput -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Erlang B — Effective Throughput</h2>
+
+            <div class="formula-box mb-4">
+                <span class="highlight">λeff</span> = λ × (1 - ErlangB(c, ρ))<br>
+                <span class="comment">// Effective throughput (blocked customers rejected)</span>
+            </div>
+
+            <div class="formula-box">
+                <span class="highlight">ρeff</span> = ρ × (1 - ErlangB(c, ρ))<br>
+                <span class="comment">// Effective utilization</span>
+            </div>
+        </section>
+
+        <!-- Key Differences -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Differences</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2">Aspect</th>
+                        <th class="text-left py-2">Erlang B</th>
+                        <th class="text-left py-2">Erlang C</th>
+                    </tr>
+                </thead>
+                <tbody class="text-text-muted">
+                    <tr class="border-b border-gray-100"><td class="py-2">Model</td><td>M/M/c/c (loss)</td><td>M/M/c (waiting)</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Queue Capacity</td><td>0</td><td>Infinite</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Customer Blocked</td><td>Rejected</td><td>Queued</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Key Formula</td><td>Blocking probability</td><td>Waiting probability</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Stability</td><td>Always stable</td><td>Requires ρ < 1</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Numerical Example -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Example: Call Center</h2>
+            <p class="text-text-muted mb-4">10 agents, avg call 3 min (μ=20/hr), λ=100 calls/hr</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <h3 class="font-semibold text-blue-700 mb-2">Erlang C (calls wait in queue)</h3>
+                    <div class="text-sm space-y-1">
+                        <p>ρ = 100/(10×20) = 0.5</p>
+                        <p>C(10, 0.5) ≈ 0.021</p>
+                        <p>Wq = 0.021 / (10×20×0.5) = 0.00021 hr</p>
+                        <p><strong>≈ 0.75 seconds wait</strong></p>
+                    </div>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <h3 class="font-semibold text-red-700 mb-2">Erlang B (calls rejected)</h3>
+                    <div class="text-sm space-y-1">
+                        <p>B(10, 0.5) ≈ 0.001</p>
+                        <p><strong>0.1% blocked</strong></p>
+                        <p>λeff = 100 × 0.999 ≈ 99.9</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Blocking Table -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Erlang B Blocking Probability Table</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2">Load (Erlangs)</th>
+                        <th class="text-left py-2">c=5</th>
+                        <th class="text-left py-2">c=10</th>
+                        <th class="text-left py-2">c=20</th>
+                        <th class="text-left py-2">c=50</th>
+                    </tr>
+                </thead>
+                <tbody class="text-text-muted font-mono text-xs">
+                    <tr class="border-b border-gray-100"><td class="py-2">1</td><td>0.2%</td><td>0.0%</td><td>0.0%</td><td>0.0%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">2</td><td>3.5%</td><td>0.1%</td><td>0.0%</td><td>0.0%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">5</td><td>26.5%</td><td>12.5%</td><td>1.8%</td><td>0.0%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">10</td><td>52.8%</td><td>33.3%</td><td>11.0%</td><td>0.5%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">20</td><td>67.3%</td><td>52.8%</td><td>35.2%</td><td>5.8%</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- CPU Scheduling -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Application: CPU Scheduling</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <h3 class="font-semibold text-blue-700 mb-2">Erlang C — Batch Processing</h3>
+                    <p class="text-sm text-text-muted">Tasks queue when cores busy. Calculate wait time Wq for non-real-time workloads.</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <h3 class="font-semibold text-red-700 mb-2">Erlang B — Real-Time Tasks</h3>
+                    <p class="text-sm text-text-muted">Tasks rejected when cores saturated. Calculate blocking probability for RT tasks.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Summary -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Summary</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 class="font-semibold text-blue-700 mb-2">Erlang C</h3>
+                    <p class="text-sm font-mono mb-1">Wq = ErlangC / (cμ(1-ρ))</p>
+                    <p class="text-xs text-text-muted">Waiting systems</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg border border-red-200">
+                    <h3 class="font-semibold text-red-700 mb-2">Erlang B</h3>
+                    <p class="text-sm font-mono mb-1">B = (cρ)^c/c! / Σ(n=0 to c)(cρ)^n/n!</p>
+                    <p class="text-xs text-text-muted">Loss systems</p>
+                </div>
+            </div>
+            <ul class="space-y-1 text-sm text-text-muted">
+                <li><strong>Traffic:</strong> A = λ/μ (Erlangs)</li>
+                <li><strong>Utilization:</strong> ρ = λ/(cμ), must be < 1 for Erlang C stability</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

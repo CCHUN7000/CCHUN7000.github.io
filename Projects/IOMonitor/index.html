@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IO Monitor - Linux Kernel Module</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-10">
+        <!-- Project Header -->
+        <section>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">IO Monitor</h1>
+            <p class="text-lg text-text-muted mb-6">Linux kernel module for on-demand block device I/O statistics monitoring</p>
+            <div class="flex flex-wrap gap-3">
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Linux Kernel</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">C</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">procfs</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Block Layer</span>
+            </div>
+        </section>
+
+        <!-- Key Features -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Features</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow text-center">
+                    <p class="text-3xl font-bold text-primary">0%</p>
+                    <p class="text-sm text-text-muted">CPU Idle Usage</p>
+                    <p class="text-xs text-text-muted mt-1">On-demand sampling only</p>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow text-center">
+                    <p class="text-3xl font-bold text-primary">10</p>
+                    <p class="text-sm text-text-muted">I/O Metrics</p>
+                    <p class="text-xs text-text-muted mt-1">Latency, throughput, queue depth</p>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow text-center">
+                    <p class="text-3xl font-bold text-primary">128</p>
+                    <p class="text-sm text-text-muted">Ring Buffer Samples</p>
+                    <p class="text-xs text-text-muted mt-1">Rolling overwrite</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Architecture</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre class="text-sm"><code>┌─────────────────────────────────────────────────────────────┐
+│                    /proc/io_monitor/                            │
+│  ┌─────────────────┐    ┌─────────────────────────────────┐  │
+│  │  trigger (write) │    │  data (read)                    │  │
+│  │  - Take snapshot │    │  - seq_file display             │  │
+│  │  - Calc delta   │    │  - Ring buffer traversal        │  │
+│  └────────┬────────┘    └─────────────────────────────────┘  │
+│           ↓                                                   │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ io_snapshot → io_delta → io_metrics → ring_entry        │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│           ↓                                                   │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │ block_device->bd_stats (per-cpu disk_stats)            │  │
+│  │ kcpustat_cpu_fetch() (CPU iowait time)                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+            </div>
+        </section>
+
+        <!-- Core Data Structures -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Core Data Structures</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg mb-6">
+                <h3 class="font-semibold text-primary mb-3">IO Metrics (10 metrics, fixed-point ×100)</h3>
+                <pre><code>struct io_metrics {
+    u64 iowait_percent;      /* iowait% ×100 */
+    u64 read_latency_ns;    /* avg read latency in ns */
+    u64 write_latency_ns;   /* avg write latency in ns */
+    u64 read_queue_depth;   /* avg read queue depth ×100 */
+    u64 write_queue_depth;  /* avg write queue depth ×100 */
+    u64 utilization_percent; /* disk utilization% ×100 */
+    u64 read_throughput;    /* read bytes/sec */
+    u64 write_throughput;   /* write bytes/sec */
+    u64 merge_rate;         /* merge rate ×100 */
+    u64 avg_io_size;        /* average IO size in sectors ×100 */
+};</code></pre>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <h3 class="font-semibold text-primary mb-3">Snapshot & Delta Pattern</h3>
+                <pre><code>struct io_snapshot {
+    u64 timestamp_ns;
+    u64 cpu_iowait, cpu_total;
+    u64 nsecs[2], sectors[2], ios[2], merges[2];  /* read/write */
+    u64 io_ticks;
+    local_t in_flight[2];
+};
+
+// Delta = curr - prev (for rate calculations)
+static void calc_delta(const struct io_snapshot *prev,
+                       const struct io_snapshot *curr,
+                       struct io_delta *delta)
+{
+    delta->time_delta_ns = curr->timestamp_ns - prev->timestamp_ns;
+    delta->iowait_delta = curr->cpu_iowait - prev->cpu_iowait;
+    // ... per-CPU aggregation via for_each_possible_cpu()
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Key Code: Snapshot -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Snapshot Collection</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre><code>static int take_snapshot(struct io_snapshot *snap)
+{
+    struct disk_stats *stat;
+    unsigned int cpu;
+    int i;
+
+    memset(snap, 0, sizeof(*snap));
+    snap->timestamp_ns = ktime_get_raw_ns();
+
+    /* Get CPU iowait stats */
+    kcpustat_cpu_fetch(&snap->cpu_iowait, target_cpu);
+
+    /* Aggregate per-CPU block device stats */
+    part_stat_lock();
+    for_each_possible_cpu(cpu) {
+        stat = per_cpu_ptr(monitor_bdev->bd_stats, cpu);
+        for (i = 0; i < 2; i++) {  /* 0=read, 1=write */
+            snap->nsecs[i] += stat->nsecs[i];
+            snap->sectors[i] += stat->sectors[i];
+            snap->ios[i] += stat->ios[i];
+            snap->merges[i] += stat->merges[i];
+        }
+        snap->io_ticks += stat->io_ticks;
+    }
+    part_stat_unlock();
+    return 0;
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Metrics Calculation -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Metrics Calculation</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre><code>static void calc_metrics(const struct io_delta *delta, struct io_metrics *out)
+{
+    /* iowait% = iowait_delta / total_delta × 10000 */
+    if (delta->total_delta > 0)
+        out->iowait_percent = (delta->iowait_delta * 10000) / delta->total_delta;
+
+    /* Read latency = nsecs / ios */
+    if (delta->ios_delta[0] > 0) {
+        out->read_latency_ns = delta->nsecs_delta[0] / delta->ios_delta[0];
+        out->read_throughput = (delta->sectors_delta[0] << 9) * 1000000000 /
+                               max(delta->time_delta_ns, 1ULL);
+        out->read_queue_depth = (delta->nsecs_delta[0] * 100) /
+                                 max(delta->time_delta_ns, 1ULL);
+        out->utilization_percent = (delta->io_ticks_delta * 10000) /
+                                  max(delta->time_delta_ns / 1000, 1ULL);
+    }
+    /* Write metrics follow same pattern (index 1) */
+
+    /* Merge rate% = merges / (ios + merges) × 10000 */
+    divisor = delta->ios_delta[0] + delta->merges_delta[0];
+    if (divisor > 0)
+        out->merge_rate = (delta->merges_delta[0] * 10000) / divisor;
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Procfs Interface -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Procfs Interface</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg mb-6">
+                <h3 class="font-semibold text-primary mb-3">Trigger Handler</h3>
+                <pre><code>static ssize_t trigger_write(struct file *file, const char __user *buffer,
+                             size_t count, loff_t *pos)
+{
+    struct io_snapshot curr;
+    struct io_delta delta;
+    struct io_metrics metrics;
+
+    take_snapshot(&curr);
+
+    if (!baseline_valid) {
+        baseline_snapshot = curr;
+        baseline_valid = true;
+        return count;
+    }
+
+    /* Second trigger: calculate delta from last */
+    calc_delta(&last_snapshot, &curr, &delta);
+    calc_metrics(&delta, &metrics);
+    ring_push_buf(&entry);
+
+    last_snapshot = curr;
+    return count;
+}</code></pre>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <h3 class="font-semibold text-primary mb-3">Procfs Registration</h3>
+                <pre><code>static const struct proc_ops trigger_proc_ops = {
+    .proc_write = trigger_write,
+};
+
+static const struct proc_ops data_proc_ops = {
+    .proc_open = data_open,
+    .proc_read = seq_read,
+    .proc_lseek = seq_lseek,
+    .proc_release = single_release,
+};
+
+proc_dir = proc_mkdir("io_monitor", NULL);
+trigger_file = proc_create("trigger", 0222, proc_dir, &trigger_proc_ops);
+data_file = proc_create("data", 0444, proc_dir, &data_proc_ops);</code></pre>
+            </div>
+        </section>
+
+        <!-- Usage -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Usage</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre><code># Load module (default: sda)
+sudo insmod io_monitor.ko
+sudo insmod io_monitor.ko target_device=sdb
+
+# Trigger snapshots
+echo 1 > /proc/io_monitor/trigger  # First: set baseline
+echo 1 > /proc/io_monitor/trigger  # Second: show delta
+
+# View data
+cat /proc/io_monitor/data
+
+# Output example:
+# IO Monitor Data (samples: 1)
+# Index  Elapsed  iowait%  read_lat   write_lat  rd_qd  wr_qd  util%   ios
+# 0      5000     5        1234567    890123     2      1      15      42</code></pre>
+            </div>
+        </section>
+
+        <!-- Metrics Table -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Metrics Reference</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2">Metric</th>
+                            <th class="text-left py-2">Description</th>
+                            <th class="text-left py-2">Unit</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-text-muted">
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>iowait%</code></td><td>CPU time waiting for IO</td><td>%</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>read_lat</code></td><td>Average read latency</td><td>ns</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>write_lat</code></td><td>Average write latency</td><td>ns</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>rd_qd/wr_qd</code></td><td>Queue depth</td><td>count</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>util%</code></td><td>Disk utilization</td><td>%</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>read_tp/write_tp</code></td><td>Throughput</td><td>B/s</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>merge_rate</code></td><td>IO merge rate</td><td>%</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>avg_io_size</code></td><td>Average IO size</td><td>sectors</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Kernel Dependencies -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Kernel Dependencies</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            <th class="text-left py-2">Symbol</th>
+                            <th class="text-left py-2">Location</th>
+                            <th class="text-left py-2">Purpose</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-text-muted">
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>bdev_file_open_by_path</code></td><td>block/bdev.c</td><td>Open block device by path</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>kcpustat_cpu_fetch</code></td><td>kernel/sched/cputime.c</td><td>Read CPU iowait stats</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>part_stat_lock/unlock</code></td><td>include/linux/part_stat.h</td><td>Lock for disk stats</td></tr>
+                        <tr class="border-b border-gray-100"><td class="py-2"><code>kvmalloc_array/kvfree</code></td><td>mm/util.c</td><td>Kernel memory allocation</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

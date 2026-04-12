@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queueing Theory - CPU Scheduling Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        <section>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">Queueing Theory Series</h1>
+            <p class="text-lg text-text-muted mb-6">CPU Scheduling Analysis: From Erlang B to Cache Interference</p>
+            <div class="flex flex-wrap gap-3">
+                <span class="bg-green-600 text-white text-sm font-medium px-3 py-1 rounded">Queueing Theory</span>
+                <span class="bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded">Erlang B</span>
+                <span class="bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded">CPUMask</span>
+                <span class="bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded">Pareto</span>
+                <span class="bg-primary/10 text-primary text-sm font-medium px-3 py-1 rounded">Cache Interference</span>
+            </div>
+        </section>
+
+        <!-- Blog Index -->
+        <section class="space-y-4">
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
+                <a href="01-ErlangB-Formula.html" class="flex items-center gap-4">
+                    <span class="bg-primary text-white text-lg font-bold w-12 h-12 rounded-full flex items-center justify-center">1</span>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-text-dark hover:text-primary transition">Erlang B Formula: Blocking Probability</h3>
+                        <p class="text-text-muted text-sm mt-1">Loss systems, M/M/c/c model, comparison with Erlang C</p>
+                    </div>
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
+                <a href="02-CPUMask-Priority-Joint-Modeling.html" class="flex items-center gap-4">
+                    <span class="bg-primary text-white text-lg font-bold w-12 h-12 rounded-full flex items-center justify-center">2</span>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-text-dark hover:text-primary transition">CPUMask + Priority Joint Modeling</h3>
+                        <p class="text-text-muted text-sm mt-1">N-core resource allocation, (k,m,n) architecture, burst tolerance</p>
+                    </div>
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
+                <a href="03-Pareto-Improvement-Analysis.html" class="flex items-center gap-4">
+                    <span class="bg-primary text-white text-lg font-bold w-12 h-12 rounded-full flex items-center justify-center">3</span>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-text-dark hover:text-primary transition">Pareto Improvement Analysis</h3>
+                        <p class="text-text-muted text-sm mt-1">Gain decomposition, fair comparison, corrected conclusions</p>
+                    </div>
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg hover:shadow-xl transition duration-300">
+                <a href="04-Cache-Interference-Impact.html" class="flex items-center gap-4">
+                    <span class="bg-primary text-white text-lg font-bold w-12 h-12 rounded-full flex items-center justify-center">4</span>
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold text-text-dark hover:text-primary transition">Cache Interference Impact</h3>
+                        <p class="text-text-muted text-sm mt-1">Cache hierarchy, δ model, mitigation strategies, decision framework</p>
+                    </div>
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

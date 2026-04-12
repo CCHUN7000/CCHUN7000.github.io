@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Interference Impact Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        <section>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-primary text-white text-sm font-bold px-3 py-1 rounded">Queueing Theory</span>
+                <span class="text-text-muted text-sm">2026-04-12</span>
+            </div>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">Cache Interference Impact on Scheduling</h1>
+            <p class="text-lg text-text-muted">How cache interference changes the Pareto frontier between CPUMask and priority scheduling.</p>
+        </section>
+
+        <!-- Cache Hierarchy -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Cache Hierarchy</h2>
+            <pre class="text-sm mb-4"><code>┌─────────────────────────────────────────────────────────────┐
+│                        CPU Core                              │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐                      │
+│  │   L1-d  │  │   L1-i  │  │   L2    │                      │
+│  │  32KB   │  │  32KB   │  │  256KB  │                      │
+│  │ 1 cycle │  │ 1 cycle │  │ 3 cycles│                      │
+│  └────┬────┘  └─────────┘  └────┬────┘                      │
+│       │                          │                           │
+│       └──────────┬───────────────┘                          │
+│                  │                                           │
+│           ┌──────▼──────┐                                    │
+│           │    L3       │                                    │
+│           │   8-32MB    │                                    │
+│           │ 20-40 cycles│                                    │
+│           └─────────────┘                                    │
+└─────────────────────────────────────────────────────────────┘
+Memory (DDR4/DDR5): 200-400 cycles</code></pre>
+            <table class="w-full text-sm mt-4">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2">Level</th>
+                        <th class="text-left py-2">Latency</th>
+                        <th class="text-left py-2">Capacity</th>
+                        <th class="text-left py-2">Sharing</th>
+                    </tr>
+                </thead>
+                <tbody class="text-text-muted">
+                    <tr class="border-b border-gray-100"><td class="py-2">L1-d</td><td>~1 ns</td><td>32-64 KB</td><td>Core-private</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">L2</td><td>~3 ns</td><td>256KB-1MB</td><td>Core-private</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">L3</td><td>~10-20 ns</td><td>8-32 MB</td><td>Usually shared</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">DRAM</td><td>~100 ns</td><td>数十 GB</td><td>Cross-core shared</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Cache Pollution Mechanism -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Cache Pollution Mechanism</h2>
+            <div class="space-y-4">
+                <div class="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                    <p class="font-semibold">Problem 1: Cache Cold Start</p>
+                    <p class="text-sm text-text-muted">When A preempts B, A's code/data is not in cache → high L1/L2 miss rate for first few cycles</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                    <p class="font-semibold">Problem 2: TLB Flush (Partial)</p>
+                    <p class="text-sm text-text-muted">Address translation cache may need partial refresh → increased memory access latency</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                    <p class="font-semibold">Problem 3: Branch Predictor State</p>
+                    <p class="text-sm text-text-muted">B's branch pattern pollutes branch predictor → A's prediction accuracy decreases</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Effective Service Rate Model -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Effective Service Rate Model</h2>
+            <p class="text-text-muted mb-4">With cache interference, A's effective service rate on shared cores:</p>
+            <pre class="text-sm"><code>μ_A,eff = μ × (1 - δ)
+
+Where δ is the cache interference factor (0 ≤ δ < 1)
+
+δ = δ_cache + δ_tlb + δ_branch
+
+Component breakdown:
+  δ_cache   ≈ 5-15%   (cache cold start losses)
+  δ_tlb     ≈ 1-5%    (TLB refill losses)
+  δ_branch  ≈ 2-8%    (branch prediction losses)
+
+Typical δ values:
+  Light interference (small working set): δ ≈ 5-10%
+  Medium interference: δ ≈ 10-20%
+  Heavy interference (large working set): δ ≈ 20-35%</code></pre>
+        </section>
+
+        <!-- Modified Wait Time -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Modified Wait Time Formula</h2>
+            <pre class="text-sm"><code>Original (ignoring cache interference):
+  Wq_A^pri = ErlangC(N, λ_A/μ) / (Nμ - λ_A)
+
+Modified (considering cache interference):
+  Wq_A^pri(δ) = ErlangC(N, λ_A/(μ(1-δ))) / (Nμ(1-δ) - λ_A)</code></pre>
+        </section>
+
+        <!-- Critical Condition -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Critical Condition Analysis</h2>
+            <p class="text-text-muted mb-4">There exists a critical interference factor δ* where:</p>
+            <pre class="text-sm"><code>Wq_A^pri(δ*) = Wq_A^iso
+
+i.e., ErlangC(N, λ_A/(μ(1-δ*))) / (Nμ(1-δ*) - λ_A)
+    = ErlangC(k, λ_A/μ) / (kμ - λ_A)
+
+When δ < δ*: Priority Pareto-dominates CPUMask
+When δ > δ*: True Tradeoff exists (neither dominates)
+
+Typical δ* values:
+  Small system (N=2-4): δ* ≈ 10-20%
+  Medium system (N=8):  δ* ≈ 15-25%
+  Large system (N=16+): δ* ≈ 20-35%</code></pre>
+        </section>
+
+        <!-- Workload-Specific δ -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Workload-Specific δ Values</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2">Workload Type</th>
+                        <th class="text-left py-2">Working Set</th>
+                        <th class="text-left py-2">Typical δ</th>
+                    </tr>
+                </thead>
+                <tbody class="text-text-muted">
+                    <tr class="border-b border-gray-100"><td class="py-2">Web Server/API</td><td>10-50 MB</td><td>3-8%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Data Processing/Batch</td><td>GB level</td><td>15-30%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Real-time Control (AV)</td><td>1-5 MB</td><td>5-12%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Game/Graphics</td><td>100-500 MB</td><td>20-40%</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">Scientific Computing</td><td>Matrix-size dependent</td><td>5-45%</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Mitigation Strategies -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Mitigation Strategies</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Hardware: Cache Partitioning</p>
+                    <p class="text-sm text-text-muted">Intel CAT, ARM MPAM — divide L3 into exclusive partitions per task</p>
+                </div>
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Hardware: Cache Coloring</p>
+                    <p class="text-sm text-text-muted">Partition physical cache by "color", bind tasks to specific colors</p>
+                </div>
+                <div class="p-4 bg-green-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Software: CPU Affinity</p>
+                    <p class="text-sm text-text-muted">Bind A to specific cores to reduce cross-core cache migration</p>
+                </div>
+                <div class="p-4 bg-green-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Software: Preemption-Aware Scheduling</p>
+                    <p class="text-sm text-text-muted">When A is preempted, prefer scheduling to same core to maximize cache reuse</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Decision Framework -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Decision Framework</h2>
+            <pre class="text-sm"><code>Step 1: Measure δ for your workload
+  Method: Run A isolated → T_iso
+         Run A shared with B → T_share
+         δ = (T_share - T_iso) / T_iso
+
+Step 2: Compare with δ*
+  If δ < δ*: Choose Priority (Pareto-dominates)
+  If δ > δ*: Evaluate what's more important
+
+Step 3: Decide based on requirements
+  A needs latency determinism? → CPUMask (k≥1) + cache partitioning
+  Throughput > determinism? → Priority + mitigation
+  Extreme resource constraints? → Pure Priority (k=0)
+
+Recommended: k=1 (minimum safety net) + Priority
+             Use minimal CPUMask for engineering certainty</code></pre>
+        </section>
+
+        <!-- Key Insights -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Insights</h2>
+            <ul class="space-y-3 text-text-muted">
+                <li class="flex items-start gap-2"><span class="text-primary font-bold">1.</span> Cache interference is a real, measurable performance loss — δ is not theoretical</li>
+                <li class="flex items-start gap-2"><span class="text-primary font-bold">2.</span> δ changes the Pareto frontier — when δ is large, CPUMask and Priority become a true tradeoff</li>
+                <li class="flex items-start gap-2"><span class="text-primary font-bold">3.</span> δ can be mitigated but not eliminated — hardware (CAT) and software (affinity) solutions exist</li>
+                <li class="flex items-start gap-2"><span class="text-primary font-bold">4.</span> Measurement is key — use real data to drive decisions, not theoretical推导</li>
+                <li class="flex items-start gap-2"><span class="text-primary font-bold">5.</span> k=1 is the recommended starting point for practical systems</li>
+            </ul>
+        </section>
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

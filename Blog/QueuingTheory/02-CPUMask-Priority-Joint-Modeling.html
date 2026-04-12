@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPUMask + Priority Joint Modeling</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        <section>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-primary text-white text-sm font-bold px-3 py-1 rounded">Queueing Theory</span>
+                <span class="text-text-muted text-sm">2026-04-12</span>
+            </div>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">CPUMask + Priority Joint Modeling</h1>
+            <p class="text-lg text-text-muted">N-core resource allocation with CPUMask (physical isolation) and preemption priority.</p>
+        </section>
+
+        <!-- Architecture Parameters -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Architecture Parameters (k, m, n)</h2>
+            <pre class="text-sm mb-4"><code>┌────────────┐  ┌────────────────┐  ┌────────────┐
+│ A-Dedicated│  │  Shared (A↑)  │  │ B-Dedicated│
+│    k cores │  │    m cores    │  │   n cores  │
+│  A only    │  │ A first, B ↑ │  │   B only   │
+└────────────┘  └────────────────┘  └────────────┘
+
+Constraint: k + m + n = N
+
+Special Cases:
+  (k=N, m=0, n=0) → All to A (B starved)
+  (k=0, m=0, n=N) → All to B (A starved)
+  (k=0, m=N, n=0) → All shared (pure priority)
+  (k=1, m=N-1, n=0) → 1 dedicated + rest shared (recommended)</code></pre>
+        </section>
+
+        <!-- Gain Decomposition -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Gain Decomposition: Architecture vs Scheduling</h2>
+            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg mb-4">
+                <p class="font-semibold text-text-dark">Key Insight</p>
+                <p class="text-sm text-text-muted">Priority's advantage comes from TWO sources that must be distinguished:</p>
+            </div>
+            <pre class="text-sm"><code>Total Gain = Architecture Gain + Scheduling Gain
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Architecture Gain (Main Source):
+  From merging isolated pools into shared pool
+
+  CPUMask: A uses k cores, B uses (N-k) cores (separate)
+  Priority: A uses N cores, B can use ALL cores' idle time
+
+  A's available cores: k → N (increase of N-k cores)
+  B's capacity: (N-k)μ → Nμ - λ_A (increase of kμ - λ_A)
+
+  → This is "positive-sum": reclaiming originally wasted resources
+  → Independent of scheduling algorithm
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Scheduling Gain (Secondary Source):
+  From preemption priority isolating A from B
+
+  A: λ_B doesn't appear in A's formula → A's delay decoupled from B
+  B: Still subject to preemption effects (cache pollution)
+
+  → "Interference elimination", not redistribution</code></pre>
+        </section>
+
+        <!-- Fair Comparison -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Fair Comparison: Same Resource Pool</h2>
+            <p class="text-text-muted mb-4">When comparing with the same c_A = k (same resource pool):</p>
+            <pre class="text-sm"><code>CPUMask (k cores for A):
+  Wq_A^iso = ErlangC(k, λ_A/μ) / (kμ - λ_A)
+
+Priority (still k cores for A, but A can preempt B):
+  Wq_A^pri = ErlangC(k, λ_A/μ) / (kμ - λ_A)
+
+Conclusion: Wq_A^pri = Wq_A^iso (A's delay is IDENTICAL!)
+
+Priority's advantage for A comes from ARCHITECTURE (more cores),
+not from scheduling algorithm.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For B's capacity (same resource pool comparison):
+
+CPUMask: B capacity = (N-k)μ
+Priority: B capacity = (N-k)μ + (kμ - λ_A) = Nμ - λ_A
+
+→ Priority still wins for B (reclaims A's idle capacity)
+→ This IS a Pareto improvement: A unchanged, B better</code></pre>
+        </section>
+
+        <!-- Key Formulas -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Formulas</h2>
+            <div class="space-y-4">
+                <div>
+                    <h3 class="font-semibold text-primary mb-2">A's Wait Time (same resource pool, c_A = k)</h3>
+                    <pre><code>Wq_A = ErlangC(k, λ_A/μ) / (k·μ - λ_A)
+
+Note: A's delay is the same whether using CPUMask or Priority
+      (when compared fairly with same c_A)</code></pre>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-primary mb-2">B's Effective Capacity</h3>
+                    <pre><code>C_B = (N - k)·μ + k·(μ - λ_A/k)  [with k dedicated for A]
+     = N·μ - λ_A  [when k dedicated cores idle capacity reclaimed]
+
+Simplified (n=0, m=N-k):
+C_B(k) = (N - k)·(μ - λ_A/N) + k·(μ - λ_A/N)
+       = N·μ - λ_A - (N-k)·λ_A/N
+       ≈ N·μ - λ_A  (when λ_A << Nμ)</code></pre>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-primary mb-2">Conservation Law</h3>
+                    <pre><code>N·μ = λ_A + C_B + C_waste
+
+C_waste = k·μ·(1 - ρ_A,core)
+        = k·(μ - λ_A/N)  [idle capacity on A's dedicated cores]</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Burst Tolerance -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Burst Tolerance Metrics</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="text-center p-4 bg-primary/5 rounded-lg">
+                    <p class="text-2xl font-bold text-primary">β_max</p>
+                    <p class="text-sm text-text-muted">Max Burst Multiplier</p>
+                    <p class="text-xs text-text-muted mt-1">β_max = C_B/λ_B</p>
+                </div>
+                <div class="text-center p-4 bg-primary/5 rounded-lg">
+                    <p class="text-2xl font-bold text-primary">H</p>
+                    <p class="text-sm text-text-muted">Headroom</p>
+                    <p class="text-xs text-text-muted mt-1">H = C_B - λ_B</p>
+                </div>
+                <div class="text-center p-4 bg-primary/5 rounded-lg">
+                    <p class="text-2xl font-bold text-primary">T_drain</p>
+                    <p class="text-sm text-text-muted">Recovery Time</p>
+                    <p class="text-xs text-text-muted mt-1">T_drain = backlog/H</p>
+                </div>
+            </div>
+            <pre class="mt-4"><code>T_drain = ((λ_burst - C_B) × T_burst) / (C_B - λ_B)</code></pre>
+        </section>
+
+        <!-- Key Findings -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Key Findings</h2>
+            <div class="space-y-4 text-text-muted">
+                <div class="p-4 bg-green-50 rounded-lg border-l-4 border-green-500">
+                    <p><strong>Priority dimension (adjusting m):</strong> Architecture gain dominates</p>
+                    <p class="text-sm mt-1">More shared cores → more capacity reclaimed from idle → Pareto improvement</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                    <p><strong>CPUMask dimension (adjusting k):</strong> Tradeoff EXISTS</p>
+                    <p class="text-sm mt-1">More dedicated cores → stronger isolation but C_B ↓ and waste ↑</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Numerical Example -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Numerical Example (N=8, μ=120, λ_A=50, λ_B=500)</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="text-left py-2">k</th>
+                        <th class="text-left py-2">A Cores</th>
+                        <th class="text-left py-2">C_B</th>
+                        <th class="text-left py-2">H</th>
+                        <th class="text-left py-2">β_max</th>
+                    </tr>
+                </thead>
+                <tbody class="text-text-muted font-mono text-xs">
+                    <tr class="border-b border-gray-100"><td class="py-2">0</td><td>8</td><td>910</td><td>410</td><td>1.82</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">1</td><td>8</td><td>796</td><td>296</td><td>1.59</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">2</td><td>8</td><td>683</td><td>183</td><td>1.37</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">3</td><td>8</td><td>569</td><td>69</td><td>1.14</td></tr>
+                    <tr class="border-b border-gray-100"><td class="py-2">4</td><td>8</td><td>455</td><td>&lt;0</td><td>B unstable!</td></tr>
+                </tbody>
+            </table>
+            <p class="text-xs text-text-muted mt-4">Note: A always has access to 8 cores via priority (architecture gain), regardless of k.</p>
+        </section>
+
+        <!-- Recommendations -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Recommendations</h2>
+            <pre class="text-sm"><code>Best Practice: k=1 (minimum safety net) + Priority
+
+Summary:
+  CPUMask buys robustness outside the model (cache isolation, scheduler bugs)
+  Priority buys efficiency inside the model (resource sharing)
+
+Decision Framework:
+  1. Check system feasibility: λ_A + λ_B < N·μ ?
+  2. Calculate k_max = floor(N - λ_B/(μ - λ_A/N))
+  3. If scheduler is trusted: k = 0 (pure priority)
+  4. If engineering conservatism needed: k = min(1, k_max)</code></pre>
+        </section>
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

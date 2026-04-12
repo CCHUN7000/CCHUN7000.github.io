@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Interference Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-10">
+        <!-- Project Header -->
+        <section>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">Cache Interference Monitor</h1>
+            <p class="text-lg text-text-muted mb-6">Linux Cache Interference Observation System: eBPF and Kernel Module based monitoring for A/B Task Cache Interference</p>
+            <div class="flex flex-wrap gap-3">
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">eBPF</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">Linux Kernel</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">PMU</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">perf_event</span>
+                <span class="bg-primary/10 text-primary px-3 py-1 rounded-full text-sm font-medium">C/Python</span>
+            </div>
+        </section>
+
+        <!-- Architecture -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Architecture</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre class="text-sm"><code>┌─────────────────────────────────────────────────────────────┐
+│                    User Space Layer                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │ Data Aggreg.│  │ Visualization│  │ Alert       │        │
+│  │ (Python)    │  │ (Grafana)   │  │ (Threshold) │        │
+│  └──────┬──────┘  └─────────────┘  └─────────────┘        │
+│         │ Histogram / eBPF Map                              │
+│  ┌──────▼──────────────────────────────────────────────┐    │
+│  │               eBPF Program Layer                     │    │
+│  │  ┌──────────────┐    ┌─────────────────────────┐    │    │
+│  │  │ Tracepoint   │    │ Hardware PMU           │    │    │
+│  │  │ Handler       │    │ (perf_event)          │    │    │
+│  │  └──────────────┘    └─────────────────────────┘    │    │
+│  │  ┌─────────────────────────────────────────────────┐ │    │
+│  │  │  eBPF Maps: task_cache_stats | core_cache_stats│ │    │
+│  │  │            preempt_histogram | interference_score│ │    │
+│  │  └─────────────────────────────────────────────────┘ │    │
+│  └───────────────────────────────────────────────────────┘    │
+│         ▲                        ▲                            │
+│         │ kprobes/tracepoints   │ perf_event_open()         │
+│  ┌──────┴───────────────────────┴──────────────┐             │
+│  │           Kernel Layer                        │             │
+│  │  Scheduler (sched_switch, sched_wakeup)     │             │
+│  │  Hardware PMU (L1/LLC Miss, CPI, Branch)    │             │
+│  └──────────────────────────────────────────────┘             │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+            </div>
+        </section>
+
+        <!-- Core Metrics -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Core Metrics</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">Preemption Related</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>Preempt count / sec</li>
+                        <li>Preempt frequency by priority</li>
+                        <li>→ tracepoint: sched/sched_switch</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">Cache Related</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>L1-dcache-load-misses / loads</li>
+                        <li>LLC-load-misses / loads</li>
+                        <li>→ Hardware PMU (perf_event)</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">CPI Related</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>CPI = Cycles / Instructions</li>
+                        <li>Branch mispredictions</li>
+                        <li>→ Hardware PMU</li>
+                    </ul>
+                </div>
+                <div class="bg-card p-5 rounded-xl border border-gray-200 shadow">
+                    <h3 class="font-semibold text-primary mb-2">Migration Related</h3>
+                    <ul class="text-sm text-text-muted space-y-1">
+                        <li>Cross-core migration count</li>
+                        <li>Cache state after migration</li>
+                        <li>→ tracepoint: sched/sched_migrate</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- eBPF Core Code -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">eBPF Implementation</h2>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg mb-6">
+                <h3 class="font-semibold text-primary mb-3">Data Structures & Maps</h3>
+                <pre><code>// Key eBPF Maps
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 4096);
+    __type(key, u32);  // pid
+    __type(value, struct task_cache_stats);
+} task_cache_stats SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 256);
+    __type(key, u32);  // cpu_id
+    __type(value, struct core_cache_stats);
+} core_cache_stats SEC(".maps");
+
+// Task cache statistics
+struct task_cache_stats {
+    u64 l1_misses, l1_hits, llc_misses, llc_hits;
+    u64 cycles, instructions;
+    u64 preempt_count, preempt_by_higher;
+    u64 cross_core_migrate, runtime_ns;
+};</code></pre>
+            </div>
+
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <h3 class="font-semibold text-primary mb-3">sched_switch Handler</h3>
+                <pre><code>SEC("tp_btf/sched_switch")
+int handle_sched_switch(struct pt_regs *ctx) {
+    u64 ts = bpf_ktime_get_ns();
+    u32 prev_pid = 0, next_pid = 0;  // from PT_REGS_PARM*
+
+    // Get prev task runtime
+    struct task_runtime_record *rec = bpf_map_lookup_elem(&task_runtime_record, &prev_pid);
+    if (rec) {
+        u64 runtime = ts - rec->last_start_ns;
+
+        // Update histogram by runtime bucket
+        u32 bucket = runtime < 1_000_000 ? 0 : runtime < 5_000_000 ? 1 : 2;
+        u64 *count = bpf_map_lookup_elem(&preempt_histogram, &bucket);
+        if (count) __sync_fetch_and_add(count, 1);
+
+        // Short runtime = high priority preemption
+        if (runtime < 1_000_000) {
+            struct task_cache_stats *s = bpf_map_lookup_elem(&task_cache_stats, &prev_pid);
+            if (s) __sync_fetch_and_add(&s->preempt_by_higher, 1);
+        }
+    }
+    return 0;
+}</code></pre>
+            </div>
+        </section>
+
+        <!-- Interference Score -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Interference Score Algorithm</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="text-center p-4 bg-primary/5 rounded-lg">
+                        <p class="text-3xl font-bold text-primary">40%</p>
+                        <p class="text-sm text-text-muted">L1 Miss Rate</p>
+                    </div>
+                    <div class="text-center p-4 bg-primary/5 rounded-lg">
+                        <p class="text-3xl font-bold text-primary">30%</p>
+                        <p class="text-sm text-text-muted">Preempt Score</p>
+                    </div>
+                    <div class="text-center p-4 bg-primary/5 rounded-lg">
+                        <p class="text-3xl font-bold text-primary">30%</p>
+                        <p class="text-sm text-text-muted">Migration Score</p>
+                    </div>
+                </div>
+                <pre><code>// Python: Calculate interference score
+def interference_score(self) -> float:
+    preempt_score = min(30, self.preempt_by_higher * 2)
+    migrate_score = min(30, self.cross_core_migrate * 5)
+    cache_score = min(40, self.l1_miss_rate * 100)
+    return preempt_score + migrate_score + cache_score
+
+# Score Range:
+#   0-25:  LOW       (acceptable)
+#   25-50: MODERATE  (monitor)
+#   50-100: HIGH      (action needed)</code></pre>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section>
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Quick Start</h2>
+            <div class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+                <pre><code># 1. Compile eBPF program
+clang -target bpf -O2 -Wall -c cache_interference.bpf.c -o cache_interference.bpf.o
+
+# 2. Load and attach
+bpftool prog load cache_interference.bpf.o /sys/fs/bpf/cache_interference
+bpftool tracepoint attach sched sched_switch /sys/fs/bpf/cache_interference
+
+# 3. Run monitor
+python3 cache_interference_monitor.py
+
+# 4. View results
+bpftool map dump id 1  # task_cache_stats</code></pre>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

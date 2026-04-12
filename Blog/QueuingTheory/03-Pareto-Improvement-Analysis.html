@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareto Improvement Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        'primary': '#3B82F6',
+                        'card': '#FFFFFF',
+                        'background': '#F9FAFB',
+                        'text-dark': '#1F2937',
+                        'text-muted': '#6B7280',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html { scroll-behavior: smooth; }
+        code { background: #f1f5f9; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875em; }
+        pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; }
+        pre code { background: transparent; padding: 0; color: inherit; }
+    </style>
+</head>
+<body class="font-sans bg-background text-text-dark min-h-screen">
+    <header class="sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-gray-200 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="../../index.html" class="text-xl font-bold text-primary hover:text-blue-700 transition">&larr; Back</a>
+            <nav class="space-x-6">
+                <a href="https://github.com/CCHUN7000" target="_blank" class="text-primary hover:text-blue-700 font-medium">GitHub</a>
+                <a href="https://linkedin.com/in/chunbo-li-7b60b9244" target="_blank" class="text-primary hover:text-blue-700 font-medium">LinkedIn</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-12 space-y-8">
+        <section>
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-primary text-white text-sm font-bold px-3 py-1 rounded">Queueing Theory</span>
+                <span class="text-text-muted text-sm">2026-04-12</span>
+            </div>
+            <h1 class="text-4xl font-extrabold text-text-dark mb-4">Pareto Improvement: Priority vs CPUMask</h1>
+            <p class="text-lg text-text-muted">Corrected analysis: gain decomposition and fair comparison.</p>
+        </section>
+
+        <!-- Definitions -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Pareto Concepts</h2>
+            <div class="space-y-3">
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="font-semibold text-primary">Pareto Improvement</p>
+                    <p class="text-sm text-text-muted">From S1 to S2: at least one party gets better, none get worse</p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="font-semibold text-primary">Pareto Dominance</p>
+                    <p class="text-sm text-text-muted">S2 is no worse than S1 in all dimensions, and strictly better in at least one</p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="font-semibold text-primary">Pareto Optimal</p>
+                    <p class="text-sm text-text-muted">No other state can Pareto-improve it. All Pareto-optimal points form the Pareto frontier.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Critical Correction -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Critical Correction: Asymmetric Comparison</h2>
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg mb-4">
+                <p class="font-semibold text-red-700">Original Error</p>
+                <p class="text-sm text-text-muted mt-1">Comparing Wq_A^pri (using N cores) with Wq_A^iso (using k cores) is unfair — different resource pools.</p>
+            </div>
+            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+                <p class="font-semibold text-green-700">Corrected Analysis</p>
+                <p class="text-sm text-text-muted mt-1">When compared with same c_A = k, priority does NOT improve A's delay. The improvement for B comes from architecture change (pool merging).</p>
+            </div>
+        </section>
+
+        <!-- Two Comparison Scenarios -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Two Comparison Scenarios</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-blue-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Scenario 1: Same Resource Pool (Fair)</p>
+                    <pre class="text-xs mt-2"><code>CPUMask: c_A = k, c_B = N-k
+Priority:  c_A = k, c_B = N-k (A can preempt B)
+
+Result:
+  Wq_A^pri = Wq_A^iso (A's delay same!)
+  Wq_B^pri < Wq_B^iso (B's capacity larger)
+  → Pareto improvement for B, A unchanged</code></pre>
+                </div>
+                <div class="p-4 bg-purple-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Scenario 2: Different Pool (Original)</p>
+                    <pre class="text-xs mt-2"><code>CPUMask: c_A = k cores
+Priority:  c_A = N cores (full pool)
+
+Result:
+  A's delay improves (N > k)
+  But this is ARCHITECTURE gain, not scheduling gain</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Formal Proof -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Corrected Proof (Same Resource Pool)</h2>
+            <pre class="text-sm"><code>Theorem: With same c_A = k, Priority Pareto-improves CPUMask
+         because B's capacity increases while A's delay is unchanged.
+
+Proof:
+
+For A (same resource pool):
+  Wq_A^iso = ErlangC(k, λ_A/μ) / (kμ - λ_A)
+  Wq_A^pri = ErlangC(k, λ_A/μ) / (kμ - λ_A)
+
+  → Wq_A^pri = Wq_A^iso  (A is unchanged) ✓
+
+For B:
+  CPUMask: C_B^iso = (N-k)μ
+  Priority: C_B^pri = (N-k)μ + (kμ - λ_A) = Nμ - λ_A
+
+  Since kμ > λ_A (stability condition):
+  C_B^pri > C_B^iso  ✓
+  → Wq_B^pri < Wq_B^iso
+
+Conclusion: Wq_A^pri = Wq_A^iso AND Wq_B^pri < Wq_B^iso
+           Priority is Pareto improvement (A unchanged, B better) ■</code></pre>
+        </section>
+
+        <!-- Gain Source -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Source of Pareto Improvement</h2>
+            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg mb-4">
+                <p class="font-semibold text-text-dark">Key Inequality: kμ > λ_A</p>
+                <p class="text-sm text-text-muted">CPUMask gives A more cores than A actually needs</p>
+            </div>
+            <pre class="text-sm"><code>Waste = kμ - λ_A (idle capacity on A's dedicated cores)
+
+CPUMask: A's idle cores are wasted (B cannot access)
+Priority: B reclaims A's idle cores (A doesn't use them)
+
+Pareto improvement source = eliminating kμ - λ_A waste
+
+NOT "stolen from A" but "reclaimed from idle"
+A loses nothing, B gains capacity for free.</code></pre>
+        </section>
+
+        <!-- Why Counter-intuitive -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Why This is Counter-intuitive</h2>
+            <p class="text-text-muted mb-4">The conservation law seems to say "impossible" within a single queue:</p>
+            <pre class="text-sm"><code>Conservation Law (single queue):
+  Σ ρ_k × Wq_k = ρ² / (μ(1-ρ)) = constant
+
+This says: A waits shorter → B waits longer
+Zero-sum game, no Pareto improvement possible.
+
+BUT: Pareto improvement happens ACROSS architectures,
+not within the same queue. The "system" changes
+from two isolated queues to one shared queue.</code></pre>
+        </section>
+
+        <!-- Factors Outside Model -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Factors Outside the Model</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Cache Interference (δ)</p>
+                    <p class="text-sm text-text-muted">Shared cores: A and B alternate → L1/L2 cache thrashing → A's effective service rate decreases by δ</p>
+                    <p class="text-xs text-text-muted mt-2">When δ > δ*: True tradeoff exists (neither dominates)</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Scheduler Latency</p>
+                    <p class="text-sm text-text-muted">Real preemption has μs-level delay; extreme cases may delay A's response</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">Non-preemptible Sections</p>
+                    <p class="text-sm text-text-muted">Kernel code sections (spin locks, interrupt handling) where B can block A</p>
+                </div>
+                <div class="p-4 bg-red-50 rounded-lg">
+                    <p class="font-semibold text-text-dark">NUMA Effects</p>
+                    <p class="text-sm text-text-muted">Cross-NUMA memory access has higher latency; CPUMask can bind A to specific NUMA node</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Corrected Conclusions -->
+        <section class="bg-card p-6 rounded-xl border border-gray-200 shadow-lg">
+            <h2 class="text-2xl font-bold text-text-dark mb-4">Corrected Conclusions</h2>
+            <ul class="space-y-3 text-text-muted">
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500 font-bold">1.</span>
+                    <span><strong>Gain Decomposition:</strong> Priority's advantage comes from architecture change (pool merging), not scheduling superiority</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500 font-bold">2.</span>
+                    <span><strong>Fair Comparison:</strong> With same c_A = k, A's delay is identical in both strategies — priority doesn't help A's latency</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500 font-bold">3.</span>
+                    <span><strong>Pareto Improvement:</strong> Exists for B (capacity gain) while A remains unchanged — positive-sum, not zero-sum</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500 font-bold">4.</span>
+                    <span><strong>Outside Model:</strong> Cache interference (δ), scheduler latency, non-preemptible sections can invalidate the theoretical advantage</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500 font-bold">5.</span>
+                    <span><strong>Best Practice:</strong> k=1 (safety net) + Priority. Default to priority, measure δ, only add CPUMask when δ makes Wq_A unacceptable</span>
+                </li>
+            </ul>
+        </section>
+    </main>
+
+    <footer class="bg-card mt-10 border-t border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-6 text-center text-text-muted text-sm">
+            <p>&copy; 2025 Chunbo. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
